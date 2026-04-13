@@ -4,6 +4,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import { openDb, initSchema, upsertTicker } from "../db/schema.js";
 import { calcPositionSize, computeSignal } from "../engine/signalEngine.js";
@@ -368,7 +369,19 @@ app.get("/health", (_req, res) => {
 // ── Serve the dashboard UI (same origin → no CORS needed)
 const UI_DIR = path.resolve(__dirname, "../../../");   // Signals_&_trends/
 app.use(express.static(UI_DIR));
-app.get("/", (_req, res) => res.sendFile(path.join(UI_DIR, "Dashboard_preview.html")));
+// Serve dashboard with PostHog project key injected from env (never commit the key).
+app.get("/", (_req, res) => {
+  try {
+    const html = fs.readFileSync(path.join(UI_DIR, "Dashboard_preview.html"), "utf-8");
+    const key = (process.env.POSTHOG_KEY || "").trim();
+    const injected = key.startsWith("phc_")
+      ? html.replace("</head>", `<meta name="posthog-key" content="${key}" />\n</head>`)
+      : html;
+    res.type("html").send(injected);
+  } catch (e) {
+    res.sendFile(path.join(UI_DIR, "Dashboard_preview.html"));
+  }
+});
 
 const PORT = +process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`[api] listening on http://localhost:${PORT}`));
