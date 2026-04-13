@@ -427,9 +427,19 @@ function SignalCard({signal:sig,gaugeId="m",size="M",onResize}){
             <div style={{fontSize:10,color:C.textMuted}}>mean {a.recommendationMean?.toFixed(1)}/5</div>
           </div>
         </div>}
-        {(e.epsGrowth!==null||e.revenueGrowth!==null)&&<div style={{display:"flex",gap:12,marginTop:8,paddingTop:8,borderTop:`1px solid ${C.cardBorder}`,fontSize:10,color:C.textSecondary}}>
+        {(e.epsGrowth!==null||e.revenueGrowth!==null)&&<div style={{display:"flex",gap:12,marginTop:8,paddingTop:8,borderTop:`1px solid ${C.cardBorder}`,fontSize:10,color:C.textSecondary,flexWrap:"wrap"}}>
           {e.epsGrowth!==null&&<span>EPS growth (q/q): <span style={{color:e.epsGrowth>=0.25?C.green:e.epsGrowth>=0?C.amber:C.red,fontWeight:700}}>{(e.epsGrowth*100).toFixed(1)}%</span></span>}
           {e.revenueGrowth!==null&&<span>Revenue growth: <span style={{color:e.revenueGrowth>=0.25?C.green:e.revenueGrowth>=0?C.amber:C.red,fontWeight:700}}>{(e.revenueGrowth*100).toFixed(1)}%</span></span>}
+        </div>}
+        {(f.sector||sig.sectorRS)&&<div style={{display:"flex",gap:10,marginTop:8,paddingTop:8,borderTop:`1px solid ${C.cardBorder}`,fontSize:10,color:C.textSecondary,alignItems:"center",flexWrap:"wrap"}}>
+          {f.sector&&<span style={{color:C.textMuted}}>Sector: <span style={{color:C.textPrimary,fontWeight:600}}>{f.sector}</span>{f.industry&&<span style={{color:C.textMuted}}> · {f.industry}</span>}</span>}
+          {sig.sectorRS&&(()=>{
+            const rs=sig.sectorRS;
+            const col=rs.rsPct>=2?C.green:rs.rsPct>=-2?C.amber:C.red;
+            return <span style={{color:C.textMuted}}>
+              {rs.etf} <span style={{color:col,fontWeight:700}}>{rs.rsPct>=0?"+":""}{rs.rsPct}%</span> vs SPY (20d) · rank <span style={{color:C.textPrimary,fontWeight:700}}>{rs.rank}/{rs.total}</span>
+            </span>;
+          })()}
         </div>}
       </div>;
     })()}

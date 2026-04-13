@@ -62,12 +62,33 @@ export async function fetchFundamentals(symbol) {
     try { domain = new URL(website).hostname.replace(/^www\./, ""); } catch {}
   }
 
+  // Map Yahoo sector name → S&P sector ETF we track in regime.js
+  const SECTOR_TO_ETF = {
+    "Technology": "XLK",
+    "Financial Services": "XLF", "Financial": "XLF",
+    "Healthcare": "XLV",
+    "Consumer Cyclical": "XLY",
+    "Consumer Defensive": "XLP",
+    "Energy": "XLE",
+    "Industrials": "XLI",
+    "Utilities": "XLU",
+    "Basic Materials": "XLB",
+    "Real Estate": "XLRE",
+    "Communication Services": "XLC",
+  };
+  const sector = sp.sector || null;
+  const industry = sp.industry || null;
+  const sectorETF = sector ? (SECTOR_TO_ETF[sector] || null) : null;
+
   const data = {
     symbol: sym,
     name: pr.longName || pr.shortName || null,
     exchange: pr.exchangeName || null,
     marketCap: num(pr.marketCap),
     logo: domain ? `${LOGO_BASE}/${domain}` : null,
+    sector,
+    industry,
+    sectorETF,
     analyst: {
       targetMean: num(fd.targetMeanPrice),
       targetHigh: num(fd.targetHighPrice),

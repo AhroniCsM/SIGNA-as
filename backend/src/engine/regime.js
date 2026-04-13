@@ -292,10 +292,27 @@ function verdictFor(sig, regime) {
   return { verdict, verdictReasons: reasons };
 }
 
+// Attach this stock's sector RS line (if we know the sector and regime has breadth data)
+function attachSectorRS(signal, regime) {
+  const etf = signal.fundamentals?.sectorETF;
+  if (!etf || !regime?.components?.sectorRS) return null;
+  const list = regime.components.sectorRS;    // already sorted by rs desc
+  const idx = list.findIndex(s => s.etf === etf);
+  if (idx < 0) return null;
+  const hit = list[idx];
+  return {
+    etf,
+    rsPct: hit.rs,             // sector return minus SPY return, last 20d
+    ret20Pct: hit.ret20,       // sector absolute return, last 20d
+    rank: idx + 1,             // 1 = strongest vs SPY
+    total: list.length,
+  };
+}
+
 export function applyRegimeToSignal(signal, regime) {
   if (!signal) return signal;
   if (!regime || regime.state === "UNKNOWN") {
-    return { ...signal, ...verdictFor(signal, regime) };
+    return { ...signal, ...verdictFor(signal, regime), sectorRS: attachSectorRS(signal, regime) };
   }
   const demotion = regime.state === "DOWNTREND" ? 2
                  : regime.state === "UPTREND_UNDER_PRESSURE" ? 1
@@ -318,5 +335,5 @@ export function applyRegimeToSignal(signal, regime) {
       regimeDemotion: demotion,
     };
   }
-  return { ...out, ...verdictFor(out, regime) };
+  return { ...out, ...verdictFor(out, regime), sectorRS: attachSectorRS(out, regime) };
 }
