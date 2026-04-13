@@ -1,0 +1,25 @@
+{
+  "name": "signa-backend",
+  "version": "0.1.0",
+  "description": "SIGNA — local-first stock signals engine (Phase 1)",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node --experimental-sqlite src/index.js",
+    "dev": "node --watch --experimental-sqlite src/index.js",
+    "api": "node --experimental-sqlite src/api/server.js",
+    "worker:market": "node --experimental-sqlite src/workers/marketWorker.js",
+    "worker:social": "node --experimental-sqlite src/workers/socialWorker.js",
+    "test:engine": "node src/engine/test.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "node-cron": "^3.0.3",
+    "yahoo-finance2": "^2.13.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

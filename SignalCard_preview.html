@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SIGNA Signal Card — Preview</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0e17; font-family: 'Inter', system-ui, sans-serif; }
+  #root { min-height: 100vh; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script type="text/babel">
+const { useState } = React;
+
+/* ─── Inline icons (no lucide dep for preview) ─── */
+const Icon = ({ d, size = 16, color = "#7b8ba3" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d={d} />
+  </svg>
+);
+const CheckCircle = ({ size, color }) => <Icon d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" size={size} color={color} />;
+const XCircle = ({ size, color }) => <Icon d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm3.5 6.5l-7 7m0-7l7 7" size={size} color={color} />;
+const AlertTriangle = ({ size, color }) => <Icon d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4m0 4h.01" size={size} color={color} />;
+const TrendingUp = ({ size, color }) => <Icon d="M23 6l-9.5 9.5-5-5L1 18" size={size} color={color} />;
+const Zap = ({ size, color }) => <Icon d="M13 2L3 14h9l-1 10 10-12h-9l1-10z" size={size} color={color} />;
+const Target = ({ size, color }) => <Icon d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12zm0 4a2 2 0 1 0 0 4 2 2 0 0 0 0-4z" size={size} color={color} />;
+const ShieldAlert = ({ size, color }) => <Icon d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z M12 8v4m0 4h.01" size={size} color={color} />;
+
+/* ─── Palette ─── */
+const C = {
+  bg: "#0a0e17", card: "#0f1420", cardBorder: "#1a2236",
+  green: "#00e676", greenDim: "#00e67633",
+  amber: "#ffc107", amberDim: "#ffc10733",
+  red: "#ff4444", redDim: "#ff444433",
+  cyan: "#18ffff", cyanDim: "#18ffff22",
+  textPrimary: "#e0e6f0", textSecondary: "#7b8ba3", textMuted: "#4a5568",
+};
+
+const sentimentColour = (l) => l === "BULLISH" ? C.green : l === "NEUTRAL" ? C.amber : C.red;
+const statusMeta = {
+  CONFIRMED: { colour: C.green, bg: C.greenDim, Icon: CheckCircle },
+  LEADING:   { colour: C.cyan,  bg: C.cyanDim,  Icon: TrendingUp },
+  ALERT:     { colour: C.amber, bg: C.amberDim,  Icon: AlertTriangle },
+  BEARISH:   { colour: C.red,   bg: C.redDim,    Icon: XCircle },
+};
+
+/* ─── Gauge ─── */
+function BullishGauge({ pct, sentiment }) {
+  const accent = sentimentColour(sentiment);
+  const radius = 80, circumference = Math.PI * radius;
+  const progress = (pct / 100) * circumference;
+  const angle = Math.PI + (pct / 100) * Math.PI;
+  const nx = 100 + radius * Math.cos(angle);
+  const ny = 110 + radius * Math.sin(angle);
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:4 }}>
+      <svg width="200" height="120" viewBox="0 0 200 120">
+        <defs>
+          <linearGradient id="gg" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor={C.red}/>
+            <stop offset="50%" stopColor={C.amber}/>
+            <stop offset="100%" stopColor={C.green}/>
+          </linearGradient>
+          <filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+        <path d="M 20 110 A 80 80 0 0 1 180 110" fill="none" stroke="#1a2236" strokeWidth="10" strokeLinecap="round"/>
+        <path d="M 20 110 A 80 80 0 0 1 180 110" fill="none" stroke="url(#gg)" strokeWidth="10" strokeLinecap="round"
+              strokeDasharray={`${progress} ${circumference}`} filter="url(#glow)" style={{transition:"stroke-dasharray 0.8s ease"}}/>
+        <circle cx={nx} cy={ny} r="5" fill={accent} filter="url(#glow)"/>
+      </svg>
+      <div style={{ marginTop:-36, textAlign:"center" }}>
+        <div style={{ fontSize:13, fontWeight:700, color:accent, letterSpacing:2, textTransform:"uppercase" }}>{sentiment}</div>
+        <div style={{ fontSize:36, fontWeight:800, color:C.textPrimary, lineHeight:1 }}>{pct}%</div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Grade Badge ─── */
+function GradeBadge({ grade, sentiment }) {
+  const accent = sentimentColour(sentiment);
+  return (
+    <div style={{ width:52, height:52, borderRadius:"50%", border:`3px solid ${accent}`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", boxShadow:`0 0 16px ${accent}44`, margin:"0 auto" }}>
+      <span style={{ fontSize:24, fontWeight:800, color:accent, lineHeight:1 }}>{grade}</span>
+      <span style={{ fontSize:7, fontWeight:600, color:C.textSecondary, letterSpacing:1, textTransform:"uppercase" }}>Grade</span>
+    </div>
+  );
+}
+
+/* ─── Size Legend ─── */
+function SizeLegend({ activeSize }) {
+  const sizes = [{ key:"full size", l:"A/B" }, { key:"half size", l:"C" }, { key:"starter", l:"D" }];
+  return (
+    <div style={{ display:"flex", justifyContent:"center", gap:8, fontSize:11, color:C.textMuted, margin:"6px 0 10px" }}>
+      {sizes.map(s => (
+        <span key={s.key} style={{ color: activeSize===s.key ? C.textPrimary : C.textMuted, fontWeight: activeSize===s.key ? 600 : 400 }}>
+          {s.l}: {s.key}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/* ─── Trade Param ─── */
+function TradeParam({ label, value, sub, colour, icon: I }) {
+  return (
+    <div style={{ flex:1, background:`${colour}11`, border:`1px solid ${colour}33`, borderRadius:8, padding:"10px 10px 8px", textAlign:"center" }}>
+      <div style={{ fontSize:10, color:C.textSecondary, textTransform:"uppercase", letterSpacing:1, marginBottom:4, display:"flex", alignItems:"center", justifyContent:"center", gap:4 }}>
+        {I && <I size={12} color={colour}/>} {label}
+      </div>
+      <div style={{ fontSize:17, fontWeight:700, color:colour }}>{value}</div>
+      {sub && <div style={{ fontSize:10, color:C.textSecondary, marginTop:2 }}>{sub}</div>}
+    </div>
+  );
+}
+
+/* ─── Metric Pill ─── */
+function MetricPill({ label, value, accent }) {
+  return (
+    <div style={{ display:"inline-flex", alignItems:"center", gap:6, background:"#111827", border:`1px solid ${accent||C.cardBorder}`, borderRadius:6, padding:"4px 10px", fontSize:11 }}>
+      <span style={{ color:C.textSecondary, fontWeight:600, textTransform:"uppercase", letterSpacing:0.5 }}>{label}</span>
+      <span style={{ color:accent||C.textPrimary, fontWeight:700 }}>{value}</span>
+    </div>
+  );
+}
+
+/* ─── Checklist Item ─── */
+function ChecklistItem({ label, status }) {
+  const m = statusMeta[status] || statusMeta.ALERT;
+  return (
+    <div style={{ display:"flex", alignItems:"flex-start", gap:10, padding:"8px 0", borderBottom:`1px solid ${C.cardBorder}` }}>
+      <m.Icon size={16} color={m.colour}/>
+      <span style={{ flex:1, fontSize:13, color:C.textPrimary, lineHeight:1.4, whiteSpace:"pre-line" }}>{label}</span>
+      <span style={{ fontSize:10, fontWeight:700, color:m.colour, background:m.bg, padding:"2px 8px", borderRadius:4, letterSpacing:0.5, whiteSpace:"nowrap" }}>{status}</span>
+    </div>
+  );
+}
+
+/* ─── Early Warning ─── */
+function EarlyWarning({ pattern, badge, description }) {
+  const m = statusMeta[badge] || statusMeta.ALERT;
+  return (
+    <div style={{ border:`1px solid ${m.colour}33`, borderRadius:10, padding:14, background:`${m.colour}08`, marginTop:10 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+        <Zap size={14} color={m.colour}/>
+        <span style={{ fontSize:12, fontWeight:700, color:m.colour, letterSpacing:0.5 }}>{pattern}</span>
+        <span style={{ marginLeft:"auto", fontSize:9, fontWeight:700, color:m.colour, background:m.bg, padding:"2px 8px", borderRadius:4, letterSpacing:0.5 }}>{badge}</span>
+      </div>
+      <p style={{ fontSize:12, color:C.textSecondary, lineHeight:1.5, margin:0 }}>{description}</p>
+    </div>
+  );
+}
+
+/* ─── Section Header ─── */
+function SectionHeader({ children, trailing }) {
+  return (
+    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", margin:"18px 0 8px", paddingBottom:6, borderBottom:`1px solid ${C.cardBorder}` }}>
+      <span style={{ fontSize:11, fontWeight:700, color:C.textSecondary, letterSpacing:1.5, textTransform:"uppercase" }}>{children}</span>
+      {trailing && <span style={{ fontSize:10, color:C.textMuted, fontStyle:"italic" }}>{trailing}</span>}
+    </div>
+  );
+}
+
+/* ─── Header Bar ─── */
+function HeaderBar({ symbol, timeframe, version }) {
+  return (
+    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0 6px", borderBottom:`1px solid ${C.cardBorder}`, marginBottom:8 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+        <span style={{ fontSize:14, fontWeight:700, color:C.green, letterSpacing:1 }}>SIGNA</span>
+        <span style={{ fontSize:10, color:C.textMuted }}>SIGNAL</span>
+      </div>
+      <div style={{ display:"flex", alignItems:"center", gap:10, fontSize:11, color:C.textSecondary }}>
+        <span style={{ fontWeight:600 }}>{symbol}</span><span>·</span><span>{timeframe}</span><span>·</span><span style={{ color:C.textMuted }}>v{version}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Demo Data ─── */
+const DEMO = {
+  JRNL: {
+    symbol:"JRNL", timeframe:"1D", version:"3", bullishPct:53, grade:"A", sentiment:"BULLISH", positionSize:"full size",
+    entry:{ value:"$8.4400", sub:"market" }, stop:{ value:"$7.2000", sub:"14.7%" }, target:{ value:"$10.920", sub:"29.4%" },
+    riskReward:"2.0:1", score:85, adx:36, volRatio:"0.5×", volColour:C.amber,
+    checklist:[
+      { label:"Full bull stack:\nprice>EMA21>EMA50>SMA200", status:"CONFIRMED" },
+      { label:"Trend score strong: 78/100", status:"CONFIRMED" },
+      { label:"MACD bullish +\nhistogram expanding", status:"CONFIRMED" },
+      { label:"RSI 65 — bullish zone", status:"CONFIRMED" },
+      { label:"ICS 0 — institutional distribution", status:"BEARISH" },
+      { label:"OBV rising + CMF positive — volume confirms", status:"CONFIRMED" },
+      { label:"Volume thin (0.5× avg) — low conviction", status:"ALERT" },
+    ],
+    earlyWarnings:[],
+  },
+  BTC_C: {
+    symbol:"BTC", timeframe:"1D", version:"3", bullishPct:59, grade:"C", sentiment:"NEUTRAL", positionSize:"starter",
+    entry:null, stop:null, target:null, noSetup:true,
+    riskReward:"0.2×", score:59, adx:16, volRatio:"0.2×", volColour:C.amber,
+    checklist:[
+      { label:"Price above EMA50", status:"CONFIRMED" },
+      { label:"Trend score weak: 27/100", status:"BEARISH" },
+      { label:"MACD bullish +\nhistogram expanding", status:"CONFIRMED" },
+      { label:"RSI 60 — bullish zone", status:"CONFIRMED" },
+      { label:"Volume thin (0.2× avg) — low conviction", status:"ALERT" },
+    ],
+    earlyWarnings:[
+      { pattern:"INSIDE BAR + LOW VOLUME", badge:"LEADING", description:"Price coiling inside prior bar range on drying volume — classic pre-breakout setup." },
+    ],
+  },
+  BTC_B: {
+    symbol:"BTC", timeframe:"4h", version:"3", bullishPct:70, grade:"B", sentiment:"BULLISH", positionSize:"half size",
+    entry:{ value:"$72,433.63", sub:"market" }, stop:{ value:"$71,376.15", sub:"1.7%" }, target:{ value:"$75,146.78", sub:"3.5%" },
+    riskReward:"2.0:1", score:78, adx:53, volRatio:"9.1×", volColour:C.green,
+    checklist:[
+      { label:"Full bull stack:\nprice>EMA21>EMA50>SMA200", status:"CONFIRMED" },
+      { label:"Trend score strong: 69/100", status:"CONFIRMED" },
+      { label:"MACD bearish +\nhistogram contracting", status:"LEADING" },
+      { label:"RSI 63 — bullish zone", status:"CONFIRMED" },
+      { label:"Volume thin (0.1× avg) — low conviction", status:"ALERT" },
+    ],
+    earlyWarnings:[
+      { pattern:"VOLUME DRY-UP", badge:"LEADING", description:"Volume 73% below 10-bar avg with price holding steady. Institutional absorption pattern — often precedes directional move." },
+    ],
+  },
+};
+
+/* ─── Main App ─── */
+function App() {
+  const [activeKey, setActiveKey] = useState("JRNL");
+  const sig = DEMO[activeKey];
+  const gc = sentimentColour(sig.sentiment);
+
+  return (
+    <div style={{ minHeight:"100vh", background:C.bg, padding:20 }}>
+      {/* Tab Switcher */}
+      <div style={{ display:"flex", gap:8, justifyContent:"center", marginBottom:16, flexWrap:"wrap" }}>
+        {Object.keys(DEMO).map(k => {
+          const d = DEMO[k];
+          return (
+            <button key={k} onClick={() => setActiveKey(k)} style={{
+              background: activeKey===k ? "#1a2236" : "transparent",
+              border: `1px solid ${activeKey===k ? C.green : C.cardBorder}`,
+              borderRadius:8, padding:"6px 16px",
+              color: activeKey===k ? C.green : C.textSecondary,
+              fontSize:12, fontWeight:600, cursor:"pointer", transition:"all 0.2s",
+            }}>
+              {d.symbol} · {d.timeframe} · Grade {d.grade}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Card */}
+      <div style={{ maxWidth:380, margin:"0 auto", background:C.card, border:`1px solid ${C.cardBorder}`, borderRadius:16, padding:"0 20px 24px", boxShadow:"0 8px 32px rgba(0,0,0,0.5)" }}>
+        <HeaderBar symbol={sig.symbol} timeframe={sig.timeframe} version={sig.version}/>
+        <BullishGauge pct={sig.bullishPct} sentiment={sig.sentiment}/>
+        <GradeBadge grade={sig.grade} sentiment={sig.sentiment}/>
+        <SizeLegend activeSize={sig.positionSize}/>
+
+        {sig.noSetup && (
+          <div style={{ display:"flex", alignItems:"center", gap:8, background:C.amberDim, border:`1px solid ${C.amber}33`, borderRadius:8, padding:"8px 12px", marginBottom:12 }}>
+            <AlertTriangle size={14} color={C.amber}/>
+            <span style={{ fontSize:12, color:C.amber, fontWeight:600 }}>No setup — wait for clearer signal</span>
+          </div>
+        )}
+
+        {sig.entry && (
+          <div style={{ display:"flex", gap:8, marginBottom:8 }}>
+            <TradeParam label="Entry" value={sig.entry.value} sub={sig.entry.sub} colour={C.green} icon={Target}/>
+            <TradeParam label="Stop" value={sig.stop.value} sub={sig.stop.sub} colour={C.red} icon={ShieldAlert}/>
+          </div>
+        )}
+        {sig.target && (
+          <div style={{ display:"flex", gap:8, marginBottom:4 }}>
+            <TradeParam label="Target" value={sig.target.value} sub={sig.target.sub} colour={C.amber} icon={TrendingUp}/>
+          </div>
+        )}
+
+        <SectionHeader>Key Metrics</SectionHeader>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:4 }}>
+          <MetricPill label="R:R" value={sig.riskReward}/>
+          <MetricPill label="Grade" value={sig.grade} accent={gc}/>
+          <MetricPill label="Score" value={`${sig.score}/100`} accent={sig.score>=70?C.green:sig.score>=50?C.amber:C.red}/>
+          <MetricPill label="ADX" value={sig.adx}/>
+          <MetricPill label="VOL" value={sig.volRatio} accent={sig.volColour}/>
+        </div>
+
+        <SectionHeader>Signal Checklist</SectionHeader>
+        {sig.checklist.map((item,i) => <ChecklistItem key={i} label={item.label} status={item.status}/>)}
+
+        {sig.earlyWarnings.length > 0 && (
+          <>
+            <SectionHeader trailing="leading indicators">Early Warnings</SectionHeader>
+            {sig.earlyWarnings.map((w,i) => <EarlyWarning key={i} pattern={w.pattern} badge={w.badge} description={w.description}/>)}
+          </>
+        )}
+
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:18, paddingTop:10, borderTop:`1px solid ${C.cardBorder}`, fontSize:10, color:C.textMuted }}>
+          <span style={{ fontWeight:700, color:C.green, letterSpacing:1 }}>SIGNA</span>
+          <span>{sig.symbol} · {sig.timeframe}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

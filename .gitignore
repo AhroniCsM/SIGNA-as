@@ -1,0 +1,34 @@
+# Secrets — NEVER commit
+.env
+**/.env
+*.env.local
+
+# Local SQLite DB (rebuilt from market data on startup)
+*.db
+*.db-shm
+*.db-wal
+backend/signa.db*
+backend/data/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude preview artifacts
+.claude/preview-*.log
+
+# Build output
+dist/
+build/

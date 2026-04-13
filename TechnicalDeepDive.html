@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>SIGNA — Technical Deep-Dive</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#0a0e17;font-family:'Inter',system-ui,sans-serif;color:#e0e6f0;}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes barGrow{from{width:0}to{width:var(--bar-w)}}
+  @keyframes pulseGlow{0%,100%{box-shadow:0 0 12px var(--glow-c)}50%{box-shadow:0 0 24px var(--glow-c)}}
+  @keyframes countUp{from{opacity:0}to{opacity:1}}
+  .anim-row{animation:fadeIn .5s ease both;}
+  .anim-row:nth-child(1){animation-delay:.1s}.anim-row:nth-child(2){animation-delay:.2s}.anim-row:nth-child(3){animation-delay:.3s}.anim-row:nth-child(4){animation-delay:.4s}
+  input:focus{border-color:#18ffff!important;outline:none;}
+  ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#0a0e17}::-webkit-scrollbar-thumb{background:#1a2236;border-radius:2px}
+  .mono{font-family:'JetBrains Mono',monospace;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script type="text/babel">
+const{useState,useMemo,useEffect,useRef}=React;
+
+/* ── PALETTE ── */
+const C={bg:"#0a0e17",card:"#0f1420",cardAlt:"#111827",cardBorder:"#1a2236",green:"#00e676",greenDim:"#00e67633",amber:"#ffc107",amberDim:"#ffc10733",red:"#ff4444",redDim:"#ff444433",cyan:"#18ffff",cyanDim:"#18ffff22",purple:"#bb86fc",textPrimary:"#e0e6f0",textSecondary:"#7b8ba3",textMuted:"#4a5568"};
+
+/* ── ICONS ── */
+const I=({d,size=16,color="#7b8ba3"})=><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d}/></svg>;
+const CheckCircle=({size,color})=><I d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3" size={size} color={color}/>;
+const XCircle=({size,color})=><I d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm3.5 6.5l-7 7m0-7l7 7" size={size} color={color}/>;
+const AlertTriangle=({size,color})=><I d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4m0 4h.01" size={size} color={color}/>;
+
+/* ── ANIMATED NUMBER ── */
+function useAnim(target,dur=900){
+  const[v,setV]=useState(0);const r=useRef();
+  useEffect(()=>{const s=v,st=performance.now();const a=now=>{const e=now-st,p=Math.min(e/dur,1),ease=1-Math.pow(1-p,3);setV(Math.round(s+(target-s)*ease));if(p<1)r.current=requestAnimationFrame(a)};r.current=requestAnimationFrame(a);return()=>cancelAnimationFrame(r.current)},[target]);
+  return v;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DEMO TICKER DATA — JRNL (Grade A)
+   ══════════════════════════════════════════════════════════════════════════ */
+const TICKER = {
+  symbol: "JRNL", name: "JRNL Inc.", timeframe: "1D",
+  close: 8.44, ema21: 8.10, ema50: 7.85, sma200: 6.20,
+  rsi: 65, adx: 36,
+  macdLine: 0.18, macdSignal: 0.12, macdHist: 0.06, macdHistPrev: 0.04,
+  volume: 1250000, volumeAvg20: 2500000, volumeRatio: 0.5,
+  ics: 0, obvRising: true, cmf: 0.08,
+  squeezeOn: false, squeezeFired: false, insideBar: false,
+};
+
+/* ── SCORING ENGINE (inline) ── */
+function calcTrend(t){
+  let pts=0;
+  const checks=[];
+  if(t.close>t.ema21){pts+=25;checks.push({rule:"Price > EMA21",val:`${t.close} > ${t.ema21}`,pts:25,pass:true})}
+  else checks.push({rule:"Price > EMA21",val:`${t.close} ≤ ${t.ema21}`,pts:0,pass:false});
+  if(t.ema21>t.ema50){pts+=25;checks.push({rule:"EMA21 > EMA50",val:`${t.ema21} > ${t.ema50}`,pts:25,pass:true})}
+  else checks.push({rule:"EMA21 > EMA50",val:`${t.ema21} ≤ ${t.ema50}`,pts:0,pass:false});
+  if(t.ema50>t.sma200){pts+=25;checks.push({rule:"EMA50 > SMA200",val:`${t.ema50} > ${t.sma200}`,pts:25,pass:true})}
+  else checks.push({rule:"EMA50 > SMA200",val:`${t.ema50} ≤ ${t.sma200}`,pts:0,pass:false});
+  if(t.close>t.sma200){pts+=15;checks.push({rule:"Price > SMA200",val:`${t.close} > ${t.sma200}`,pts:15,pass:true})}
+  else checks.push({rule:"Price > SMA200",val:`${t.close} ≤ ${t.sma200}`,pts:0,pass:false});
+  if(t.adx>25){pts+=10;checks.push({rule:"ADX > 25",val:`${t.adx} > 25`,pts:10,pass:true})}
+  else checks.push({rule:"ADX > 25",val:`${t.adx} ≤ 25`,pts:0,pass:false});
+  return{score:Math.min(pts,100),checks};
+}
+
+function calcOsc(t,trendScore){
+  let pts=0;const checks=[];
+  if(t.rsi>50){pts+=30;checks.push({rule:"RSI > 50 (bullish)",val:`${t.rsi} > 50`,pts:30,pass:true})}
+  else if(t.rsi>=40){pts+=15;checks.push({rule:"RSI 40–50 (neutral)",val:`${t.rsi}`,pts:15,pass:true})}
+  else checks.push({rule:"RSI < 40 (bearish)",val:`${t.rsi} < 40`,pts:0,pass:false});
+  if(t.macdLine>t.macdSignal){pts+=35;checks.push({rule:"MACD > Signal",val:`${t.macdLine} > ${t.macdSignal}`,pts:35,pass:true})}
+  else checks.push({rule:"MACD > Signal",val:`${t.macdLine} ≤ ${t.macdSignal}`,pts:0,pass:false});
+  const expanding=Math.abs(t.macdHist)>Math.abs(t.macdHistPrev);
+  if(expanding){pts+=20;checks.push({rule:"Histogram expanding",val:`|${t.macdHist}| > |${t.macdHistPrev}|`,pts:20,pass:true})}
+  else{pts+=5;checks.push({rule:"Histogram contracting",val:`|${t.macdHist}| ≤ |${t.macdHistPrev}|`,pts:5,pass:true})}
+  if(trendScore>70){pts+=15;checks.push({rule:"Trend score > 70",val:`${trendScore} > 70`,pts:15,pass:true})}
+  else checks.push({rule:"Trend score > 70",val:`${trendScore} ≤ 70`,pts:0,pass:false});
+  return{score:Math.min(pts,100),checks};
+}
+
+function calcVol(t){
+  let pts=0;const checks=[];
+  if(t.volumeRatio>=1.5){pts+=35;checks.push({rule:"Vol ≥ 1.5× avg",val:`${t.volumeRatio}×`,pts:35,pass:true})}
+  else if(t.volumeRatio>=1.0){pts+=20;checks.push({rule:"Vol 1.0–1.5× avg",val:`${t.volumeRatio}×`,pts:20,pass:true})}
+  else if(t.volumeRatio>=0.5){pts+=10;checks.push({rule:"Vol 0.5–1.0× avg",val:`${t.volumeRatio}×`,pts:10,pass:true})}
+  else checks.push({rule:"Vol < 0.5× avg (thin)",val:`${t.volumeRatio}×`,pts:0,pass:false});
+  if(t.ics>0){pts+=25;checks.push({rule:"ICS > 0 (accumulation)",val:`${t.ics}`,pts:25,pass:true})}
+  else if(t.ics===0){pts+=10;checks.push({rule:"ICS = 0 (neutral)",val:`${t.ics}`,pts:10,pass:true})}
+  else checks.push({rule:"ICS < 0 (distribution)",val:`${t.ics}`,pts:0,pass:false});
+  if(t.obvRising&&t.cmf>0){pts+=25;checks.push({rule:"OBV rising + CMF > 0",val:`CMF=${t.cmf}`,pts:25,pass:true})}
+  else{pts+=10;checks.push({rule:"OBV/CMF weak",val:`CMF=${t.cmf}`,pts:10,pass:true})}
+  return{score:Math.min(pts,100),checks};
+}
+
+function calcVolatility(t){
+  let pts=0;const checks=[];
+  if(t.squeezeFired){pts+=80;checks.push({rule:"Squeeze just fired",val:"TRUE",pts:80,pass:true})}
+  else if(t.squeezeOn){pts+=50;checks.push({rule:"Squeeze locked",val:"TRUE",pts:50,pass:true})}
+  else{pts+=30;checks.push({rule:"Normal volatility",val:"no squeeze",pts:30,pass:true})}
+  if(t.insideBar){pts+=20;checks.push({rule:"Inside bar detected",val:"TRUE",pts:20,pass:true})}
+  else checks.push({rule:"Inside bar",val:"FALSE",pts:0,pass:false});
+  return{score:Math.min(pts,100),checks};
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SUB-SCORE BAR COMPONENT
+   ══════════════════════════════════════════════════════════════════════════ */
+function ScoreBar({label,score,weight,weightLabel,colour,checks,delay=0}){
+  const animScore=useAnim(score);
+  const weighted=Math.round(score*weight);
+  const animWeighted=useAnim(weighted);
+  const[expanded,setExpanded]=useState(true);
+  return <div className="anim-row" style={{background:C.card,border:`1px solid ${C.cardBorder}`,borderRadius:12,padding:16,marginBottom:12}}>
+    {/* Header row */}
+    <div onClick={()=>setExpanded(!expanded)} style={{cursor:"pointer",display:"flex",alignItems:"center",gap:12,marginBottom:expanded?12:0}}>
+      <div style={{width:40,height:40,borderRadius:8,background:`${colour}15`,border:`1px solid ${colour}33`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <span style={{fontSize:18,fontWeight:800,color:colour}}>{animScore}</span>
+      </div>
+      <div style={{flex:1}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:14,fontWeight:700,color:C.textPrimary}}>{label}</span>
+          <span style={{fontSize:11,color:C.textMuted}}>Weight: {weightLabel}</span>
+        </div>
+        {/* Full-width bar */}
+        <div style={{height:6,background:"#1a2236",borderRadius:3,marginTop:6,overflow:"hidden"}}>
+          <div style={{height:"100%",width:`${animScore}%`,background:`linear-gradient(90deg, ${colour}88, ${colour})`,borderRadius:3,boxShadow:`0 0 8px ${colour}44`,transition:"width .06s linear"}}/>
+        </div>
+      </div>
+      <div style={{textAlign:"right",minWidth:60}}>
+        <div style={{fontSize:9,color:C.textMuted,textTransform:"uppercase",letterSpacing:.5}}>Weighted</div>
+        <div style={{fontSize:16,fontWeight:800,color:colour}}>{animWeighted}</div>
+      </div>
+      <span style={{fontSize:16,color:C.textMuted,transition:"transform .2s",transform:expanded?"rotate(90deg)":"rotate(0deg)"}}>▸</span>
+    </div>
+    {/* Expanded checks */}
+    {expanded&&<div style={{borderTop:`1px solid ${C.cardBorder}`,paddingTop:10}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+        <thead><tr style={{color:C.textMuted,fontSize:10,textTransform:"uppercase",letterSpacing:.5}}>
+          <th style={{textAlign:"left",padding:"4px 0",fontWeight:600}}>Condition</th>
+          <th style={{textAlign:"left",padding:"4px 0",fontWeight:600}}>Value</th>
+          <th style={{textAlign:"right",padding:"4px 0",fontWeight:600}}>Points</th>
+          <th style={{textAlign:"center",padding:"4px 0",fontWeight:600,width:40}}>Status</th>
+        </tr></thead>
+        <tbody>{checks.map((c,i)=><tr key={i} style={{borderTop:`1px solid ${C.cardBorder}`}}>
+          <td style={{padding:"6px 0",color:C.textPrimary}} className="mono">{c.rule}</td>
+          <td style={{padding:"6px 0",color:C.textSecondary}} className="mono">{c.val}</td>
+          <td style={{padding:"6px 0",textAlign:"right",fontWeight:700,color:c.pass?C.green:C.textMuted}} className="mono">+{c.pts}</td>
+          <td style={{padding:"6px 0",textAlign:"center"}}>{c.pass?<CheckCircle size={14} color={C.green}/>:<XCircle size={14} color={C.red}/>}</td>
+        </tr>)}</tbody>
+      </table>
+      <div style={{marginTop:8,display:"flex",justifyContent:"flex-end",gap:4,fontSize:11}}>
+        <span style={{color:C.textMuted}}>Raw:</span>
+        <span className="mono" style={{color:C.textPrimary,fontWeight:700}}>{score}/100</span>
+        <span style={{color:C.textMuted}}>× {weight} =</span>
+        <span className="mono" style={{color:colour,fontWeight:800}}>{weighted}</span>
+      </div>
+    </div>}
+  </div>
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   COMPOSITE GAUGE (large)
+   ══════════════════════════════════════════════════════════════════════════ */
+function LargeGauge({pct,sentiment}){
+  const ap=useAnim(pct);
+  const accent=pct>=75?C.green:pct>=55?C.green:pct>=40?C.amber:C.red;
+  const R=100,circ=Math.PI*R,prog=(ap/100)*circ;
+  const ang=Math.PI+(ap/100)*Math.PI,nx=130+R*Math.cos(ang),ny=130+R*Math.sin(ang);
+  return <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
+    <svg width="260" height="150" viewBox="0 0 260 150">
+      <defs>
+        <linearGradient id="lgG" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor={C.red}/><stop offset="40%" stopColor={C.amber}/><stop offset="100%" stopColor={C.green}/></linearGradient>
+        <filter id="lgGlow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      </defs>
+      <path d="M 30 135 A 100 100 0 0 1 230 135" fill="none" stroke="#1a2236" strokeWidth="12" strokeLinecap="round"/>
+      <path d="M 30 135 A 100 100 0 0 1 230 135" fill="none" stroke="url(#lgG)" strokeWidth="12" strokeLinecap="round" strokeDasharray={`${prog} ${circ}`} filter="url(#lgGlow)" style={{transition:"stroke-dasharray .06s linear"}}/>
+      <circle cx={nx} cy={ny} r="7" fill={accent} filter="url(#lgGlow)" style={{transition:"cx .06s,cy .06s"}}/>
+    </svg>
+    <div style={{marginTop:-44,textAlign:"center"}}>
+      <div style={{fontSize:14,fontWeight:700,color:accent,letterSpacing:3,textTransform:"uppercase"}}>{sentiment}</div>
+      <div style={{fontSize:48,fontWeight:900,color:C.textPrimary,lineHeight:1}}>{ap}%</div>
+    </div>
+  </div>
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   R:R CALCULATION BREAKDOWN
+   ══════════════════════════════════════════════════════════════════════════ */
+function RRBreakdown({entry,stop,rMultiple}){
+  const risk=entry-stop;
+  const target=entry+risk*rMultiple;
+  const stopPct=((risk/entry)*100).toFixed(2);
+  const targetPct=(((target-entry)/entry)*100).toFixed(2);
+  const dollarRisk=risk;
+  const dollarReward=target-entry;
+
+  const[bal,setBal]=useState(25000);
+  const[riskPct,setRiskPct]=useState(1.0);
+  const qty=Math.floor((bal*(riskPct/100))/risk);
+  const posVal=qty*entry;
+  const maxLoss=qty*risk;
+  const maxGain=qty*(target-entry);
+
+  return <div style={{background:C.card,border:`1px solid ${C.cardBorder}`,borderRadius:12,padding:20}}>
+    <h3 style={{fontSize:14,fontWeight:700,color:C.textPrimary,letterSpacing:1,textTransform:"uppercase",marginBottom:16,display:"flex",alignItems:"center",gap:8}}>
+      <span style={{width:4,height:16,background:C.cyan,borderRadius:2,display:"inline-block"}}/>
+      Risk / Reward Calculation
+    </h3>
+
+    {/* Step-by-step formula */}
+    <div style={{background:C.cardAlt,borderRadius:8,padding:16,marginBottom:16,border:`1px solid ${C.cardBorder}`}}>
+      <div style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Step-by-Step Formula</div>
+      {[
+        {step:"1",formula:"Risk per Share = Entry − Stop",calc:`$${entry.toFixed(2)} − $${stop.toFixed(2)}`,result:`$${risk.toFixed(2)}`,colour:C.red},
+        {step:"2",formula:`Target = Entry + (Risk × ${rMultiple})`,calc:`$${entry.toFixed(2)} + ($${risk.toFixed(2)} × ${rMultiple})`,result:`$${target.toFixed(2)}`,colour:C.green},
+        {step:"3",formula:"Stop Distance %",calc:`($${risk.toFixed(2)} / $${entry.toFixed(2)}) × 100`,result:`${stopPct}%`,colour:C.amber},
+        {step:"4",formula:"Target Gain %",calc:`($${dollarReward.toFixed(2)} / $${entry.toFixed(2)}) × 100`,result:`${targetPct}%`,colour:C.green},
+        {step:"5",formula:"Risk:Reward Ratio",calc:`$${dollarReward.toFixed(2)} / $${risk.toFixed(2)}`,result:`${rMultiple.toFixed(1)}:1`,colour:C.cyan},
+      ].map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderTop:i>0?`1px solid ${C.cardBorder}`:"none"}}>
+        <span style={{width:22,height:22,borderRadius:"50%",background:`${s.colour}22`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:s.colour,flexShrink:0}}>{s.step}</span>
+        <div style={{flex:1}}>
+          <div style={{fontSize:11,color:C.textSecondary,marginBottom:2}}>{s.formula}</div>
+          <div className="mono" style={{fontSize:12,color:C.textMuted}}>{s.calc}</div>
+        </div>
+        <div className="mono" style={{fontSize:15,fontWeight:800,color:s.colour,minWidth:80,textAlign:"right"}}>{s.result}</div>
+      </div>)}
+    </div>
+
+    {/* Visual R:R bar */}
+    <div style={{marginBottom:16}}>
+      <div style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Visual Risk:Reward</div>
+      <div style={{display:"flex",height:32,borderRadius:6,overflow:"hidden",border:`1px solid ${C.cardBorder}`}}>
+        <div style={{flex:1,background:`${C.red}33`,display:"flex",alignItems:"center",justifyContent:"center",borderRight:`2px solid ${C.amber}`}}>
+          <span style={{fontSize:10,fontWeight:700,color:C.red}}>RISK −{stopPct}%</span>
+        </div>
+        <div style={{flex:rMultiple,background:`${C.green}22`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <span style={{fontSize:10,fontWeight:700,color:C.green}}>REWARD +{targetPct}%</span>
+        </div>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",marginTop:4,fontSize:10,color:C.textMuted}}>
+        <span>Stop: ${stop.toFixed(2)}</span>
+        <span style={{color:C.amber,fontWeight:600}}>Entry: ${entry.toFixed(2)}</span>
+        <span>Target: ${target.toFixed(2)}</span>
+      </div>
+    </div>
+
+    {/* R:R quality badge */}
+    <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:8,background:rMultiple>=2?C.greenDim:C.amberDim,border:`1px solid ${rMultiple>=2?C.green:C.amber}33`,marginBottom:16}}>
+      {rMultiple>=2?<CheckCircle size={14} color={C.green}/>:<AlertTriangle size={14} color={C.amber}/>}
+      <span style={{fontSize:12,fontWeight:600,color:rMultiple>=2?C.green:C.amber}}>
+        {rMultiple>=2?`✓ Quality Trade — R:R ${rMultiple.toFixed(1)}:1 meets minimum 2.0:1`:`⚠ Low Quality — R:R ${rMultiple.toFixed(1)}:1 below 2.0:1 threshold`}
+      </span>
+    </div>
+
+    {/* Position Sizer */}
+    <div style={{background:C.cardAlt,borderRadius:8,padding:16,border:`1px solid ${C.cardBorder}`}}>
+      <div style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Position Sizer</div>
+      <div style={{display:"flex",gap:12,marginBottom:12}}>
+        <label style={{flex:1}}><span style={{fontSize:9,color:C.textMuted,textTransform:"uppercase"}}>Portfolio Balance</span><input type="number" value={bal} onChange={e=>setBal(+e.target.value)} style={{width:"100%",background:C.bg,border:`1px solid ${C.cardBorder}`,borderRadius:6,color:C.textPrimary,padding:"6px 10px",fontSize:14,fontWeight:600,marginTop:3}}/></label>
+        <label style={{flex:1}}><span style={{fontSize:9,color:C.textMuted,textTransform:"uppercase"}}>Risk Per Trade %</span><input type="number" value={riskPct} step="0.25" onChange={e=>setRiskPct(+e.target.value)} style={{width:"100%",background:C.bg,border:`1px solid ${C.cardBorder}`,borderRadius:6,color:C.textPrimary,padding:"6px 10px",fontSize:14,fontWeight:600,marginTop:3}}/></label>
+      </div>
+      <div style={{fontSize:10,color:C.textMuted,marginBottom:8}}>
+        <span className="mono">Quantity = (${bal.toLocaleString()} × {riskPct}%) / ${risk.toFixed(2)} = </span>
+        <span className="mono" style={{color:C.cyan,fontWeight:700}}>{qty} shares</span>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8}}>
+        {[
+          {l:"Shares",v:qty.toLocaleString(),c:C.cyan},
+          {l:"Position $",v:"$"+posVal.toLocaleString(undefined,{maximumFractionDigits:0}),c:C.green},
+          {l:"Max Loss",v:"-$"+maxLoss.toFixed(0),c:C.red},
+          {l:"Max Gain",v:"+$"+maxGain.toFixed(0),c:C.green},
+        ].map(x=><div key={x.l} style={{textAlign:"center",padding:8,background:C.bg,borderRadius:6,border:`1px solid ${C.cardBorder}`}}>
+          <div style={{fontSize:8,color:C.textMuted,textTransform:"uppercase",letterSpacing:.5,marginBottom:2}}>{x.l}</div>
+          <div className="mono" style={{fontSize:15,fontWeight:800,color:x.c}}>{x.v}</div>
+        </div>)}
+      </div>
+    </div>
+  </div>
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MAIN APP
+   ══════════════════════════════════════════════════════════════════════════ */
+function App(){
+  const t=TICKER;
+  const trend=calcTrend(t);
+  const osc=calcOsc(t,trend.score);
+  const vol=calcVol(t);
+  const volat=calcVolatility(t);
+
+  const bullishPct=Math.round(trend.score*.40+osc.score*.25+vol.score*.20+volat.score*.15);
+  const grade=bullishPct>=75?"A":bullishPct>=55?"B":bullishPct>=40?"C":"D";
+  const sentiment=bullishPct>=55?"BULLISH":bullishPct>=40?"NEUTRAL":"BEARISH";
+  const rMultiple=grade==="A"?3.0:grade==="B"?2.0:1.5;
+
+  const entry=8.44, stop=7.20;
+
+  return <div style={{minHeight:"100vh",background:C.bg,padding:24,maxWidth:900,margin:"0 auto"}}>
+    {/* Header */}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24,paddingBottom:16,borderBottom:`1px solid ${C.cardBorder}`}}>
+      <div style={{display:"flex",alignItems:"baseline",gap:12}}>
+        <span style={{fontSize:22,fontWeight:800,color:C.green,letterSpacing:2}}>SIGNA</span>
+        <span style={{fontSize:14,color:C.textPrimary,fontWeight:700}}>{t.symbol}</span>
+        <span style={{fontSize:11,color:C.textMuted}}>{t.timeframe} · Technical Deep-Dive</span>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontSize:11,color:C.textMuted}}>Composite Score</span>
+        <span style={{fontSize:20,fontWeight:800,color:bullishPct>=55?C.green:bullishPct>=40?C.amber:C.red}}>{bullishPct}%</span>
+        <span style={{fontSize:16,fontWeight:800,padding:"2px 10px",borderRadius:6,background:`${bullishPct>=55?C.green:C.amber}22`,color:bullishPct>=55?C.green:C.amber,border:`1px solid ${bullishPct>=55?C.green:C.amber}44`}}>{grade}</span>
+      </div>
+    </div>
+
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+      {/* LEFT: Score Breakdown */}
+      <div>
+        <h2 style={{fontSize:12,fontWeight:700,color:C.textSecondary,letterSpacing:1.5,textTransform:"uppercase",marginBottom:16,display:"flex",alignItems:"center",gap:8}}>
+          <span style={{width:4,height:16,background:C.green,borderRadius:2,display:"inline-block"}}/>
+          Score Breakdown
+        </h2>
+
+        <LargeGauge pct={bullishPct} sentiment={sentiment}/>
+
+        <div style={{height:16}}/>
+
+        <ScoreBar label="Trend" score={trend.score} weight={0.40} weightLabel="40%" colour={C.green} checks={trend.checks}/>
+        <ScoreBar label="Oscillators" score={osc.score} weight={0.25} weightLabel="25%" colour={C.cyan} checks={osc.checks}/>
+        <ScoreBar label="Volume" score={vol.score} weight={0.20} weightLabel="20%" colour={C.amber} checks={vol.checks}/>
+        <ScoreBar label="Volatility" score={volat.score} weight={0.15} weightLabel="15%" colour={C.purple} checks={volat.checks}/>
+
+        {/* Final calculation */}
+        <div style={{background:C.card,border:`1px solid ${C.green}33`,borderRadius:12,padding:16,marginTop:4}}>
+          <div style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Final Composite Calculation</div>
+          <div className="mono" style={{fontSize:12,color:C.textSecondary,lineHeight:2}}>
+            <span style={{color:C.green}}>Trend {trend.score}</span> × 0.40 = <span style={{color:C.textPrimary,fontWeight:700}}>{Math.round(trend.score*0.40)}</span><br/>
+            <span style={{color:C.cyan}}>Oscil {osc.score}</span> × 0.25 = <span style={{color:C.textPrimary,fontWeight:700}}>{Math.round(osc.score*0.25)}</span><br/>
+            <span style={{color:C.amber}}>Vol   {vol.score}</span> × 0.20 = <span style={{color:C.textPrimary,fontWeight:700}}>{Math.round(vol.score*0.20)}</span><br/>
+            <span style={{color:C.purple}}>Volat {volat.score}</span> × 0.15 = <span style={{color:C.textPrimary,fontWeight:700}}>{Math.round(volat.score*0.15)}</span><br/>
+            <span style={{borderTop:`1px solid ${C.cardBorder}`,display:"inline-block",paddingTop:4,marginTop:4}}>
+              <span style={{color:C.textMuted}}>Total =</span> <span style={{fontSize:16,fontWeight:900,color:C.green}}>{bullishPct}%</span>
+              <span style={{color:C.textMuted}}> → Grade</span> <span style={{fontSize:16,fontWeight:900,color:C.green}}>{grade}</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* RIGHT: R:R + Position Sizer */}
+      <div>
+        <h2 style={{fontSize:12,fontWeight:700,color:C.textSecondary,letterSpacing:1.5,textTransform:"uppercase",marginBottom:16,display:"flex",alignItems:"center",gap:8}}>
+          <span style={{width:4,height:16,background:C.cyan,borderRadius:2,display:"inline-block"}}/>
+          Risk / Reward & Position
+        </h2>
+        <RRBreakdown entry={entry} stop={stop} rMultiple={rMultiple}/>
+
+        {/* Indicator snapshot */}
+        <div style={{background:C.card,border:`1px solid ${C.cardBorder}`,borderRadius:12,padding:16,marginTop:12}}>
+          <div style={{fontSize:10,color:C.textMuted,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Raw Indicator Snapshot</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+            {[
+              {l:"Close",v:`$${t.close}`,c:C.textPrimary},
+              {l:"EMA21",v:`$${t.ema21}`,c:C.green},
+              {l:"EMA50",v:`$${t.ema50}`,c:C.green},
+              {l:"SMA200",v:`$${t.sma200}`,c:C.amber},
+              {l:"RSI(14)",v:t.rsi,c:t.rsi>50?C.green:C.amber},
+              {l:"ADX(14)",v:t.adx,c:t.adx>25?C.green:C.amber},
+              {l:"MACD",v:t.macdLine.toFixed(3),c:t.macdLine>t.macdSignal?C.green:C.red},
+              {l:"Vol Ratio",v:`${t.volumeRatio}×`,c:t.volumeRatio<0.5?C.amber:C.green},
+              {l:"CMF(20)",v:t.cmf,c:t.cmf>0?C.green:C.red},
+            ].map(x=><div key={x.l} style={{padding:8,background:C.cardAlt,borderRadius:6,border:`1px solid ${C.cardBorder}`}}>
+              <div style={{fontSize:8,color:C.textMuted,textTransform:"uppercase",letterSpacing:.5,marginBottom:2}}>{x.l}</div>
+              <div className="mono" style={{fontSize:14,fontWeight:700,color:x.c}}>{x.v}</div>
+            </div>)}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Footer */}
+    <div style={{marginTop:32,paddingTop:12,borderTop:`1px solid ${C.cardBorder}`,display:"flex",justifyContent:"space-between",fontSize:10,color:C.textMuted}}>
+      <span><span style={{fontWeight:700,color:C.green,letterSpacing:1}}>SIGNA</span> Technical Deep-Dive</span>
+      <span>{t.symbol} · {t.timeframe} · Generated {new Date().toLocaleString()}</span>
+    </div>
+  </div>
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

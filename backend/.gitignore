@@ -1,0 +1,6 @@
+node_modules/
+.env
+signa.db
+signa.db-*
+*.log
+.DS_Store

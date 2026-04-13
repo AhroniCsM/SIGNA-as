@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SIGNA — Live Signals Dashboard</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230a0e17'/><rect x='6' y='14' width='4' height='12' fill='%2300e676'/><line x1='8' y1='10' x2='8' y2='28' stroke='%2300e676' stroke-width='1.5'/><rect x='14' y='8' width='4' height='16' fill='%2300e676'/><line x1='16' y1='5' x2='16' y2='26' stroke='%2300e676' stroke-width='1.5'/><rect x='22' y='4' width='4' height='18' fill='%2300e676'/><line x1='24' y1='2' x2='24' y2='24' stroke='%2300e676' stroke-width='1.5'/><path d='M5 22 L11 16 L17 12 L27 6' stroke='%2318ffff' stroke-width='1.5' fill='none' stroke-linecap='round'/><circle cx='27' cy='6' r='2' fill='%2318ffff'/></svg>" />
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0a0e17;font-family:'Inter',system-ui,sans-serif;color:#e0e6f0}
+  @keyframes badgePulse{0%,100%{opacity:1}50%{opacity:.65}}
+  @keyframes livePulse{0%,100%{opacity:1}50%{opacity:.3}}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  input:focus{border-color:#18ffff!important;outline:none}
+  ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#0a0e17}::-webkit-scrollbar-thumb{background:#1a2236;border-radius:2px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script type="text/babel">
+const{useState,useMemo,useCallback,useEffect,useRef}=React;
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ICONS
+   ══════════════════════════════════════════════════════════════════════════ */
+const I=({d,size=16,color="#7b8ba3"})=><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d}/></svg>;
+const CheckCircle=({size,color})=><I d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3" size={size} color={color}/>;
+const XCircle=({size,color})=><I d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm3.5 6.5l-7 7m0-7l7 7" size={size} color={color}/>;
+const AlertTriangle=({size,color})=><I d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4m0 4h.01" size={size} color={color}/>;
+const TrendingUp=({size,color})=><I d="M23 6l-9.5 9.5-5-5L1 18" size={size} color={color}/>;
+const Zap=({size,color})=><I d="M13 2L3 14h9l-1 10 10-12h-9l1-10z" size={size} color={color}/>;
+const Target=({size,color})=><I d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12zm0 4a2 2 0 1 0 0 4 2 2 0 0 0 0-4z" size={size} color={color}/>;
+const Shield=({size,color})=><I d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM12 8v4m0 4h.01" size={size} color={color}/>;
+const Copy=({size,color})=><I d="M20 9h-9a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2zM5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" size={size} color={color}/>;
+const Check=({size,color})=><I d="M20 6L9 17l-5-5" size={size} color={color}/>;
+const Clock=({size,color})=><I d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 6v6l4 2" size={size} color={color}/>;
+const Wallet=({size,color})=><I d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4M4 6v12a2 2 0 0 0 2 2h14v-4" size={size} color={color}/>;
+const Flame=({size,color})=><I d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14 0-5.5 3.5-7.5C14 3 14.5 4 14 5c-1 1.5-.5 2.5 0 3.5.5 1 1 2.5 1 4a5 5 0 1 1-10 0c0-1.5.5-2.5 1.5-3" size={size} color={color}/>;
+const Building=({size,color})=><I d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18zM6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2" size={size} color={color}/>;
+const Users=({size,color})=><I d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" size={size} color={color}/>;
+const ArrowLeft=({size,color})=><I d="M19 12H5M12 19l-7-7 7-7" size={size} color={color}/>;
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PALETTE + HELPERS
+   ══════════════════════════════════════════════════════════════════════════ */
+const C={bg:"#0a0e17",card:"#0f1420",cardBorder:"#1a2236",green:"#00e676",greenDim:"#00e67633",amber:"#ffc107",amberDim:"#ffc10733",red:"#ff4444",redDim:"#ff444433",cyan:"#18ffff",cyanDim:"#18ffff22",purple:"#bb86fc",purpleDim:"#bb86fc33",textPrimary:"#e0e6f0",textSecondary:"#7b8ba3",textMuted:"#4a5568"};
+const gradeAccent=g=>g==="A"?C.green:g==="B"?C.green:g==="C"?C.amber:C.red;
+const sentimentColour=s=>s==="BULLISH"?C.green:s==="NEUTRAL"?C.amber:C.red;
+const statusMeta={CONFIRMED:{colour:C.green,bg:C.greenDim,glow:true,Icon:CheckCircle},LEADING:{colour:C.cyan,bg:C.cyanDim,glow:true,Icon:TrendingUp},ALERT:{colour:C.amber,bg:C.amberDim,glow:false,Icon:AlertTriangle},BEARISH:{colour:C.red,bg:C.redDim,glow:false,Icon:XCircle}};
+
+function useAnimatedValue(target,dur=800){const[v,setV]=useState(0);const r=useRef();useEffect(()=>{const s=v,st=performance.now();const a=now=>{const e=now-st,p=Math.min(e/dur,1),ease=1-Math.pow(1-p,3);setV(Math.round(s+(target-s)*ease));if(p<1)r.current=requestAnimationFrame(a)};r.current=requestAnimationFrame(a);return()=>cancelAnimationFrame(r.current)},[target]);return v}
+function useCopy(){const[c,setC]=useState(false);const copy=useCallback(t=>{navigator.clipboard?.writeText(t).then(()=>{setC(true);setTimeout(()=>setC(false),1500)})},[]);return{copied:c,copy}}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SHARED COMPONENTS (SignalCard internals)
+   ══════════════════════════════════════════════════════════════════════════ */
+function BullishGauge({pct,sentiment,id="m"}){const ap=useAnimatedValue(pct),accent=sentimentColour(sentiment),R=80,circ=Math.PI*R,prog=(ap/100)*circ,ang=Math.PI+(ap/100)*Math.PI,nx=100+R*Math.cos(ang),ny=110+R*Math.sin(ang);return<div style={{display:"flex",flexDirection:"column",alignItems:"center",marginBottom:4}}><svg width="200" height="120" viewBox="0 0 200 120"><defs><linearGradient id={`gg${id}`} x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor={C.red}/><stop offset="50%" stopColor={C.amber}/><stop offset="100%" stopColor={C.green}/></linearGradient><filter id={`gl${id}`}><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><path d="M 20 110 A 80 80 0 0 1 180 110" fill="none" stroke="#1a2236" strokeWidth="10" strokeLinecap="round"/><path d="M 20 110 A 80 80 0 0 1 180 110" fill="none" stroke={`url(#gg${id})`} strokeWidth="10" strokeLinecap="round" strokeDasharray={`${prog} ${circ}`} filter={`url(#gl${id})`} style={{transition:"stroke-dasharray .06s linear"}}/><circle cx={nx} cy={ny} r="5" fill={accent} filter={`url(#gl${id})`} style={{transition:"cx .06s,cy .06s"}}/></svg><div style={{marginTop:-36,textAlign:"center"}}><div style={{fontSize:13,fontWeight:700,color:accent,letterSpacing:2,textTransform:"uppercase"}}>{sentiment}</div><div style={{fontSize:36,fontWeight:800,color:C.textPrimary,lineHeight:1}}>{ap}%</div></div></div>}
+
+function GradeBadge({grade}){const a=gradeAccent(grade);return<div style={{width:52,height:52,borderRadius:"50%",border:`3px solid ${a}`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",boxShadow:`0 0 20px ${a}55,0 0 40px ${a}22`,margin:"0 auto",transition:"all .4s"}}><span style={{fontSize:24,fontWeight:800,color:a,lineHeight:1}}>{grade}</span><span style={{fontSize:7,fontWeight:600,color:C.textSecondary,letterSpacing:1,textTransform:"uppercase"}}>Grade</span></div>}
+
+function SizeLegend({activeSize}){return<div style={{display:"flex",justifyContent:"center",gap:8,fontSize:11,color:C.textMuted,margin:"6px 0 10px"}}>{[{k:"full size",l:"A/B"},{k:"half size",l:"C"},{k:"starter",l:"D"}].map(s=><span key={s.k} style={{color:activeSize===s.k?C.textPrimary:C.textMuted,fontWeight:activeSize===s.k?600:400}}>{s.l}: {s.k}</span>)}</div>}
+
+function TradeParam({label,value,sub,colour,icon:Ic,rawValue}){const{copied,copy}=useCopy();return<div onClick={()=>rawValue&&copy(`${label}: ${rawValue}`)} style={{flex:1,background:`${colour}11`,border:`1px solid ${colour}33`,borderRadius:8,padding:"10px 10px 8px",textAlign:"center",cursor:rawValue?"pointer":"default",transition:"border-color .2s"}} title={rawValue?"Click to copy":undefined}><div style={{fontSize:10,color:C.textSecondary,textTransform:"uppercase",letterSpacing:1,marginBottom:4,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>{Ic&&<Ic size={12} color={colour}/>}{label}{rawValue&&(copied?<Check size={10} color={C.green}/>:<Copy size={10} color={C.textMuted}/>)}</div><div style={{fontSize:17,fontWeight:700,color:colour}}>{value}</div>{sub&&<div style={{fontSize:10,color:C.textSecondary,marginTop:2}}>{sub}</div>}</div>}
+
+const GRADE_RISK={A:1.5,B:1.0,C:0.5,D:0,F:0};
+const WIN_RATE={A:0.55,B:0.50,C:0.40,D:0.30,F:0.25};
+function PositionSizer({entry,stopLoss,target,grade,noSetup}){
+  const[bal,setBal]=useState(25000);
+  const sug=GRADE_RISK[grade]??1.0;
+  const[risk,setRisk]=useState(sug);
+  const[maxPos,setMaxPos]=useState(20);
+  const[open,setOpen]=useState(false);
+  useEffect(()=>{setRisk(GRADE_RISK[grade]??1.0)},[grade]);
+  const r=useMemo(()=>{
+    if(!entry||!stopLoss||stopLoss>=entry||!bal||bal<=0)return null;
+    if(noSetup||risk<=0)return{block:true,msg:risk<=0?"Grade "+(grade||"?")+" → risk set to 0. Skip this trade.":"No setup — do not trade."};
+    const rps=entry-stopLoss, stopPct=(rps/entry)*100;
+    const drBase=bal*(risk/100);
+    let shares=Math.floor(drBase/rps);
+    let pv=shares*entry;
+    const maxDollars=bal*(maxPos/100);
+    let capHit=false;
+    if(pv>maxDollars){shares=Math.floor(maxDollars/entry);pv=shares*entry;capHit=true;}
+    const dr=shares*rps, posPct=pv/bal*100;
+    const reward=target&&target>entry?shares*(target-entry):0;
+    const rMult=target&&target>entry?(target-entry)/rps:0;
+    const wr=WIN_RATE[grade]??0.45;
+    const ev=target&&target>entry?(wr*reward-(1-wr)*dr):null;
+    const addOn=entry+rps*0.5;
+    const tranches=shares>1?[
+      {l:"Starter",s:Math.floor(shares/2),p:entry,n:"At signal confirm"},
+      {l:"Add-on",s:shares-Math.floor(shares/2),p:+addOn.toFixed(2),n:`@ +0.5R (trend confirming)`},
+    ]:[];
+    const warns=[];
+    if(stopPct>10)warns.push({lvl:"warn",msg:`Wide stop (${stopPct.toFixed(1)}% from entry) — volatile trade.`});
+    if(rMult&&rMult<2)warns.push({lvl:"warn",msg:`Low R:R (${rMult.toFixed(2)}:1). Pros want ≥2:1.`});
+    if(capHit)warns.push({lvl:"info",msg:`Position capped at ${maxPos}% of portfolio.`});
+    if(ev!=null&&ev<0)warns.push({lvl:"warn",msg:`Negative expected value ($${ev.toFixed(0)}) at ${Math.round(wr*100)}% hit rate.`});
+    if(shares===0)warns.push({lvl:"warn",msg:"Share count rounded to 0 — bump risk % or portfolio."});
+    return{shares,dr:dr.toFixed(2),pv:pv.toFixed(2),posPct:posPct.toFixed(1),stopPct:stopPct.toFixed(1),reward:reward.toFixed(0),rMult:rMult.toFixed(2),ev:ev!=null?ev.toFixed(0):null,wr:Math.round(wr*100),tranches,warns,capHit,sug};
+  },[bal,risk,maxPos,entry,stopLoss,target,grade,noSetup]);
+  if(!r)return null;
+  if(r.block)return<div style={{background:`${C.amber}11`,border:`1px solid ${C.amber}44`,borderRadius:10,padding:12,marginTop:8,display:"flex",alignItems:"center",gap:8}}><AlertTriangle size={14} color={C.amber}/><span style={{fontSize:11,color:C.amber,fontWeight:600}}>{r.msg}</span></div>;
+  const riskOff=Math.abs(risk-sug)>0.01;
+  return<div style={{background:"#111827",border:`1px solid ${C.cardBorder}`,borderRadius:10,padding:open?12:"8px 12px",marginTop:8}}>
+    <div onClick={()=>setOpen(!open)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",marginBottom:open?8:0}}>
+      <div style={{display:"flex",alignItems:"center",gap:6}}><Wallet size={13} color={C.cyan}/><span style={{fontSize:11,fontWeight:700,color:C.textSecondary,letterSpacing:1,textTransform:"uppercase"}}>Position Sizer</span>{!open&&<span style={{fontSize:10,color:C.textMuted,marginLeft:6}}>· {r.shares} sh · ${Number(r.dr).toLocaleString()} risk · {r.rMult}R</span>}</div>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontSize:9,color:C.textMuted}}>Grade {grade||"?"} → {sug}%</span>
+        <span style={{fontSize:14,color:C.textMuted,lineHeight:1}}>{open?"▾":"▸"}</span>
+      </div>
+    </div>
+    {open&&<>
+    <div style={{display:"flex",gap:8,marginBottom:8}}>
+      <label style={{flex:1}}><span style={{fontSize:9,color:C.textMuted,textTransform:"uppercase",letterSpacing:.5}}>Portfolio $</span><input type="number" value={bal} onChange={e=>setBal(+e.target.value)} style={{width:"100%",background:"#0a0e17",border:`1px solid ${C.cardBorder}`,borderRadius:6,color:C.textPrimary,padding:"4px 8px",fontSize:13,fontWeight:600,marginTop:2}}/></label>
+      <label style={{flex:1}}><span style={{fontSize:9,color:C.textMuted,textTransform:"uppercase",letterSpacing:.5}}>Risk %{riskOff&&<span style={{color:C.amber,marginLeft:4}}>⚠</span>}</span><input type="number" value={risk} step="0.25" onChange={e=>setRisk(+e.target.value)} style={{width:"100%",background:"#0a0e17",border:`1px solid ${riskOff?C.amber:C.cardBorder}`,borderRadius:6,color:C.textPrimary,padding:"4px 8px",fontSize:13,fontWeight:600,marginTop:2}}/></label>
+      <label style={{flex:1}}><span style={{fontSize:9,color:C.textMuted,textTransform:"uppercase",letterSpacing:.5}}>Max Pos %</span><input type="number" value={maxPos} step="5" onChange={e=>setMaxPos(+e.target.value)} style={{width:"100%",background:"#0a0e17",border:`1px solid ${C.cardBorder}`,borderRadius:6,color:C.textPrimary,padding:"4px 8px",fontSize:13,fontWeight:600,marginTop:2}}/></label>
+    </div>
+    <div style={{display:"flex",gap:8,marginBottom:8}}>
+      {[
+        {l:"Shares",v:r.shares.toLocaleString(),c:C.cyan},
+        {l:"$ at Risk",v:"$"+Number(r.dr).toLocaleString(),c:C.amber},
+        {l:"Position",v:"$"+Number(r.pv).toLocaleString(),c:C.green,sub:r.posPct+"%"},
+      ].map(x=><div key={x.l} style={{flex:1,textAlign:"center",padding:"6px 4px",background:"#0a0e17",borderRadius:6}}><div style={{fontSize:9,color:C.textMuted,textTransform:"uppercase"}}>{x.l}</div><div style={{fontSize:15,fontWeight:700,color:x.c}}>{x.v}</div>{x.sub&&<div style={{fontSize:9,color:C.textMuted}}>{x.sub} of port</div>}</div>)}
+    </div>
+    {target&&<div style={{display:"flex",gap:8,marginBottom:8}}>
+      {[
+        {l:"Reward @ Tgt",v:"$"+Number(r.reward).toLocaleString(),c:C.green},
+        {l:"R-multiple",v:r.rMult+"R",c:parseFloat(r.rMult)>=2?C.green:C.amber},
+        {l:`EV @ ${r.wr}% win`,v:r.ev!=null?(r.ev>=0?"+$":"-$")+Math.abs(r.ev).toLocaleString():"—",c:r.ev>=0?C.green:C.red},
+      ].map(x=><div key={x.l} style={{flex:1,textAlign:"center",padding:"6px 4px",background:"#0a0e17",borderRadius:6}}><div style={{fontSize:9,color:C.textMuted,textTransform:"uppercase"}}>{x.l}</div><div style={{fontSize:14,fontWeight:700,color:x.c}}>{x.v}</div></div>)}
+    </div>}
+    {r.tranches.length>0&&<div style={{marginBottom:8}}>
+      <div style={{fontSize:9,color:C.textMuted,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>Entry Plan</div>
+      {r.tranches.map(t=><div key={t.l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 8px",background:"#0a0e17",borderRadius:6,marginBottom:3,fontSize:11}}>
+        <span style={{fontWeight:700,color:C.cyan,width:60}}>{t.l}</span>
+        <span style={{color:C.textPrimary,fontWeight:600}}>{t.s} sh @ ${t.p}</span>
+        <span style={{color:C.textMuted,fontSize:10}}>{t.n}</span>
+      </div>)}
+    </div>}
+    {r.warns.length>0&&<div style={{display:"flex",flexDirection:"column",gap:4}}>
+      {r.warns.map((w,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:6,fontSize:10,padding:"4px 8px",background:`${w.lvl==="warn"?C.amber:C.cyan}11`,border:`1px solid ${w.lvl==="warn"?C.amber:C.cyan}33`,borderRadius:6,color:w.lvl==="warn"?C.amber:C.cyan}}>
+        <AlertTriangle size={10}/><span>{w.msg}</span>
+      </div>)}
+    </div>}
+    </>}
+  </div>
+}
+
+function MetricPill({label,value,accent}){return<div style={{display:"inline-flex",alignItems:"center",gap:6,background:"#111827",border:`1px solid ${accent||C.cardBorder}`,borderRadius:6,padding:"4px 10px",fontSize:11}}><span style={{color:C.textSecondary,fontWeight:600,textTransform:"uppercase",letterSpacing:.5}}>{label}</span><span style={{color:accent||C.textPrimary,fontWeight:700}}>{value}</span></div>}
+
+function LowRR({rr}){const n=parseFloat(rr);if(isNaN(n)||n>=2.0)return null;return<div style={{display:"flex",alignItems:"center",gap:6,background:C.amberDim,border:`1px solid ${C.amber}33`,borderRadius:6,padding:"4px 10px",marginTop:6}}><AlertTriangle size={12} color={C.amber}/><span style={{fontSize:10,color:C.amber,fontWeight:600}}>Low Quality Trade — R:R {rr} below 2.0:1</span></div>}
+
+function ChecklistItem({label,status}){const m=statusMeta[status]||statusMeta.ALERT;return<div style={{display:"flex",alignItems:"flex-start",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.cardBorder}`}}><m.Icon size={16} color={m.colour}/><span style={{flex:1,fontSize:13,color:C.textPrimary,lineHeight:1.4,whiteSpace:"pre-line"}}>{label}</span><span style={{fontSize:10,fontWeight:700,color:m.colour,background:m.bg,padding:"2px 8px",borderRadius:4,letterSpacing:.5,whiteSpace:"nowrap",boxShadow:m.glow?`0 0 8px ${m.colour}44,0 0 16px ${m.colour}22`:"none",animation:m.glow?"badgePulse 2s ease-in-out infinite":"none"}}>{status}</span></div>}
+
+function EarlyWarning({pattern,badge,description}){const m=statusMeta[badge]||statusMeta.ALERT;return<div style={{border:`1px solid ${m.colour}33`,borderRadius:10,padding:14,background:`${m.colour}08`,marginTop:10}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><Zap size={14} color={m.colour}/><span style={{fontSize:12,fontWeight:700,color:m.colour,letterSpacing:.5}}>{pattern}</span><span style={{marginLeft:"auto",fontSize:9,fontWeight:700,color:m.colour,background:m.bg,padding:"2px 8px",borderRadius:4,boxShadow:m.glow?`0 0 8px ${m.colour}44`:"none"}}>{badge}</span></div><p style={{fontSize:12,color:C.textSecondary,lineHeight:1.5,margin:0}}>{description}</p></div>}
+
+function SH({children,trailing}){return<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",margin:"18px 0 8px",paddingBottom:6,borderBottom:`1px solid ${C.cardBorder}`}}><span style={{fontSize:11,fontWeight:700,color:C.textSecondary,letterSpacing:1.5,textTransform:"uppercase"}}>{children}</span>{trailing&&<span style={{fontSize:10,color:C.textMuted,fontStyle:"italic"}}>{trailing}</span>}</div>}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   NEW INDICATORS — Sector Trend Alignment, Why Buy/Avoid, Analyst+Pattern
+   ══════════════════════════════════════════════════════════════════════════ */
+
+// Sector Trend Scale — how aligned is the stock with its sector?
+// alignmentScore: -100 (fighting trend) ... 0 (neutral) ... +100 (riding trend)
+function SectorTrendScale({sector,sectorTrend,stockTrend,alignmentScore}){
+  const aligned=alignmentScore>=60,neutral=alignmentScore>=20&&alignmentScore<60,against=alignmentScore<20;
+  const col=aligned?C.green:neutral?C.amber:C.red;
+  const label=aligned?"WITH THE TREND":neutral?"PARTIAL ALIGNMENT":"AGAINST THE TREND";
+  // map -100..100 to 0..100 for bar position
+  const pos=Math.max(0,Math.min(100,(alignmentScore+100)/2));
+  const sDir=sectorTrend.direction==="up"?"▲":sectorTrend.direction==="down"?"▼":"■";
+  const kDir=stockTrend.direction==="up"?"▲":stockTrend.direction==="down"?"▼":"■";
+  const sCol=sectorTrend.direction==="up"?C.green:sectorTrend.direction==="down"?C.red:C.amber;
+  const kCol=stockTrend.direction==="up"?C.green:stockTrend.direction==="down"?C.red:C.amber;
+  return<div style={{background:"#111827",border:`1px solid ${col}33`,borderRadius:10,padding:12,marginTop:8}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+      <div style={{display:"flex",alignItems:"center",gap:6}}><Building size={12} color={col}/><span style={{fontSize:11,fontWeight:700,color:C.textSecondary,letterSpacing:1,textTransform:"uppercase"}}>Sector: {sector}</span></div>
+      <span style={{fontSize:10,fontWeight:700,color:col,background:`${col}22`,padding:"2px 8px",borderRadius:4,letterSpacing:.5,boxShadow:aligned?`0 0 8px ${col}44`:"none"}}>{label}</span>
+    </div>
+    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:6}}>
+      <span style={{color:C.textMuted}}>Sector 1M: <span style={{color:sCol,fontWeight:700}}>{sDir} {sectorTrend.pct>0?"+":""}{sectorTrend.pct}%</span></span>
+      <span style={{color:C.textMuted}}>Stock 1M: <span style={{color:kCol,fontWeight:700}}>{kDir} {stockTrend.pct>0?"+":""}{stockTrend.pct}%</span></span>
+    </div>
+    {/* Alignment scale bar */}
+    <div style={{position:"relative",width:"100%",height:8,background:"linear-gradient(90deg,#ff4444 0%,#ffc107 50%,#00e676 100%)",borderRadius:4,marginTop:4,opacity:.7}}>
+      <div style={{position:"absolute",left:`${pos}%`,top:-3,transform:"translateX(-50%)",width:4,height:14,background:C.textPrimary,borderRadius:2,boxShadow:`0 0 8px ${col}`}}/>
+    </div>
+    <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:C.textMuted,marginTop:4,textTransform:"uppercase",letterSpacing:.5}}>
+      <span>Against</span><span>Neutral</span><span>With</span>
+    </div>
+    <div style={{textAlign:"center",marginTop:6,fontSize:11,color:C.textSecondary}}>Alignment Score: <span style={{color:col,fontWeight:700}}>{alignmentScore>0?"+":""}{alignmentScore}</span></div>
+  </div>
+}
+
+// Why Buy / Why Avoid — one-liner from social + one from technical
+function WhyBox({whySocial,whyTechnical,verdict}){
+  const col=verdict==="BUY"?C.green:verdict==="AVOID"?C.red:C.amber;
+  const label=verdict==="BUY"?"WHY BUY":verdict==="AVOID"?"WHY AVOID":"WHY WAIT";
+  return<div style={{background:`${col}08`,border:`1px solid ${col}33`,borderRadius:10,padding:12,marginTop:8}}>
+    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+      <Zap size={13} color={col}/>
+      <span style={{fontSize:11,fontWeight:800,color:col,letterSpacing:1.2,textTransform:"uppercase"}}>{label}</span>
+    </div>
+    <div style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:6}}>
+      <Users size={12} color={C.purple}/>
+      <div style={{flex:1}}>
+        <div style={{fontSize:9,color:C.textMuted,textTransform:"uppercase",letterSpacing:.5,marginBottom:2}}>Social</div>
+        <div style={{fontSize:12,color:C.textPrimary,lineHeight:1.45}}>{whySocial}</div>
+      </div>
+    </div>
+    <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+      <TrendingUp size={12} color={C.cyan}/>
+      <div style={{flex:1}}>
+        <div style={{fontSize:9,color:C.textMuted,textTransform:"uppercase",letterSpacing:.5,marginBottom:2}}>Technical</div>
+        <div style={{fontSize:12,color:C.textPrimary,lineHeight:1.45}}>{whyTechnical}</div>
+      </div>
+    </div>
+  </div>
+}
+
+// Analyst consensus + chart pattern stops/targets
+function AnalystChartPanel({analystConsensus,chartPattern}){
+  return<div style={{background:"#111827",border:`1px solid ${C.cardBorder}`,borderRadius:10,padding:12,marginTop:8}}>
+    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+      <Building size={12} color={C.purple}/>
+      <span style={{fontSize:11,fontWeight:700,color:C.textSecondary,letterSpacing:1,textTransform:"uppercase"}}>Analyst + Chart Pattern</span>
+    </div>
+    {analystConsensus&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:10}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:9,color:C.textMuted,textTransform:"uppercase"}}>Analyst Stop</div>
+        <div style={{fontSize:15,fontWeight:700,color:C.red}}>{analystConsensus.stopAvg}</div>
+      </div>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:9,color:C.textMuted,textTransform:"uppercase"}}>Analyst Target</div>
+        <div style={{fontSize:15,fontWeight:700,color:C.green}}>{analystConsensus.targetAvg}</div>
+      </div>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:9,color:C.textMuted,textTransform:"uppercase"}}>{analystConsensus.analystCount} Analysts</div>
+        <div style={{fontSize:15,fontWeight:700,color:C.cyan}}>{analystConsensus.confidence}</div>
+      </div>
+    </div>}
+    {chartPattern&&<div style={{borderTop:`1px solid ${C.cardBorder}`,paddingTop:10}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+        <span style={{fontSize:11,fontWeight:700,color:C.amber,letterSpacing:.5}}>📐 {chartPattern.name}</span>
+        <span style={{fontSize:10,color:C.textMuted}}>Support: <span style={{color:C.red,fontWeight:700}}>{chartPattern.support}</span> · Resistance: <span style={{color:C.green,fontWeight:700}}>{chartPattern.resistance}</span></span>
+      </div>
+      <p style={{fontSize:11,color:C.textSecondary,lineHeight:1.4,margin:0}}>{chartPattern.description}</p>
+    </div>}
+  </div>
+}
+
+/* Extra data per ticker — sector alignment, MA150, why buy, analyst + chart pattern */
+const SIGNAL_EXTRAS={
+  JRNL:{sector:"Media/Publishing",sectorTrend:{pct:4.2,direction:"up"},stockTrend:{pct:12.8,direction:"up"},alignmentScore:78,
+    ma150:"$6.85",ma150Status:"above",ma150Distance:"+23.2%",
+    whySocial:"Mention velocity +245% with 72% bullish sentiment — retail momentum building but lacks volume backing.",
+    whyTechnical:"Full bull stack with trend score 78 and MACD expansion, but volume at 0.5× signals low conviction — wait for volume confirmation.",
+    verdict:"WAIT",
+    analystConsensus:{stopAvg:"$7.10",targetAvg:"$11.50",analystCount:4,confidence:"Moderate"},
+    chartPattern:{name:"Bull Flag @ Fib 0.382",support:"$7.80",resistance:"$9.10",description:"Tight consolidation on rising trendline. Breakout above $9.10 targets 1.618 extension at $11.50."}},
+  NVDA:{sector:"Semiconductors",sectorTrend:{pct:8.5,direction:"up"},stockTrend:{pct:11.2,direction:"up"},alignmentScore:85,
+    ma150:"$128.40",ma150Status:"above",ma150Distance:"+11.3%",
+    whySocial:"Institutional chatter: block trades + 2.1× volume with moderate mentions. Smart money accumulating, not retail hype.",
+    whyTechnical:"Trend 82, ADX 42 (strong), ICS +3.2 confirms accumulation. All four scoring pillars green — textbook Grade B setup.",
+    verdict:"BUY",
+    analystConsensus:{stopAvg:"$135.80",targetAvg:"$158.00",analystCount:32,confidence:"High"},
+    chartPattern:{name:"Ascending Triangle",support:"$138.20",resistance:"$145.00",description:"Higher lows into horizontal resistance at $145. Volume expansion on breakout confirms next leg to $158."}},
+  BTC:{sector:"Crypto",sectorTrend:{pct:-1.2,direction:"flat"},stockTrend:{pct:2.1,direction:"up"},alignmentScore:18,
+    ma150:"$62,400",ma150Status:"above",ma150Distance:"+4.8%",
+    whySocial:"Mixed — broad sector chatter but no directional consensus. Sentiment 55% — fence-sitting.",
+    whyTechnical:"ADX 16 (no trend), volume 0.2× (dry), but inside-bar compression signals pending breakout. Wait for squeeze to fire.",
+    verdict:"WAIT",
+    analystConsensus:{stopAvg:"$59,800",targetAvg:"$72,500",analystCount:12,confidence:"Low"},
+    chartPattern:{name:"Inside Bar / Coil",support:"$61,200",resistance:"$67,800",description:"Volatility compressing into prior range. Break of either extreme triggers directional move — no edge until then."}},
+  TSLA:{sector:"EV / Auto",sectorTrend:{pct:6.8,direction:"up"},stockTrend:{pct:-2.4,direction:"down"},alignmentScore:-35,
+    ma150:"$242.10",ma150Status:"above",ma150Distance:"+9.6%",
+    whySocial:"HYPE: +210% mentions, 85% bullish — classic retail euphoria without institutional flow.",
+    whyTechnical:"Bull stack intact but volume 0.3× and ICS -1.5 shows quiet distribution. Price-social divergence — wait.",
+    verdict:"WAIT",
+    analystConsensus:{stopAvg:"$248.00",targetAvg:"$310.00",analystCount:28,confidence:"Mixed"},
+    chartPattern:{name:"Rising Wedge (bearish)",support:"$251.00",resistance:"$270.00",description:"Narrowing highs/lows on declining volume — bearish reversal risk. Break of $251 targets 0.618 retrace at $238."}},
+  AAPL:{sector:"Big Tech",sectorTrend:{pct:5.2,direction:"up"},stockTrend:{pct:7.8,direction:"up"},alignmentScore:88,
+    ma150:"$184.20",ma150Status:"above",ma150Distance:"+7.8%",
+    whySocial:"Low velocity (+45%) but steady 60% bullish sentiment — institutional, not meme-driven.",
+    whyTechnical:"Trend 90, volume 1.8×, ICS +2.8, full OBV/CMF confirmation. Highest-conviction setup in the book, R:R 3.0:1.",
+    verdict:"BUY",
+    analystConsensus:{stopAvg:"$192.00",targetAvg:"$225.00",analystCount:42,confidence:"High"},
+    chartPattern:{name:"Cup & Handle",support:"$194.00",resistance:"$205.00",description:"Rounded base complete with handle forming at $197. Breakout target $225 matches analyst consensus — high-probability continuation."}},
+  AMD:{sector:"Semiconductors",sectorTrend:{pct:8.5,direction:"up"},stockTrend:{pct:1.2,direction:"up"},alignmentScore:32,
+    ma150:"$171.50",ma150Status:"below",ma150Distance:"-1.9%",
+    whySocial:"Mentions +190% with 90% bullish — retail piling in but volume not confirming.",
+    whyTechnical:"Below MA150, ADX 19 (no trend), squeeze locked. Energy building but direction unclear — wait for fire.",
+    verdict:"WAIT",
+    analystConsensus:{stopAvg:"$162.00",targetAvg:"$185.00",analystCount:24,confidence:"Moderate"},
+    chartPattern:{name:"TTM Squeeze (Bollinger inside Keltner)",support:"$160.00",resistance:"$175.00",description:"Volatility at multi-month low. Directional break of $160 or $175 dictates next 8-10% move."}},
+  GME:{sector:"Retail",sectorTrend:{pct:1.8,direction:"up"},stockTrend:{pct:-8.5,direction:"down"},alignmentScore:-82,
+    ma150:"$18.40",ma150Status:"below",ma150Distance:"-28.5%",
+    whySocial:"BULL TRAP: +350% mentions, 95% bullish — peak euphoria with zero volume backing.",
+    whyTechnical:"Below ALL moving averages, trend 15, RSI 38, volume 0.2×. Every indicator says avoid — social hype is the trap.",
+    verdict:"AVOID",
+    analystConsensus:{stopAvg:"$12.50",targetAvg:"$15.00",analystCount:3,confidence:"Low"},
+    chartPattern:{name:"Head & Shoulders (top)",support:"$11.80",resistance:"$16.20",description:"Neckline break at $13.20 confirms bearish reversal. Measured move targets $9.40 — do not catch this falling knife."}},
+  SOFI:{sector:"FinTech",sectorTrend:{pct:3.2,direction:"up"},stockTrend:{pct:4.8,direction:"up"},alignmentScore:72,
+    ma150:"$9.80",ma150Status:"above",ma150Distance:"+10.7%",
+    whySocial:"Low-key +62% mentions, 58% sentiment — not crowded, room to run.",
+    whyTechnical:"Full bull stack, ICS +1.2, volume 1.4×, MACD expanding — clean secondary setup behind big tech.",
+    verdict:"BUY",
+    analystConsensus:{stopAvg:"$10.00",targetAvg:"$12.80",analystCount:16,confidence:"Moderate"},
+    chartPattern:{name:"Breakout Retest",support:"$10.40",resistance:"$11.20",description:"Prior resistance at $10.40 now acting as support. Hold of retest opens path to $12.80 analyst target."}},
+};
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SIGNAL CARD
+   ══════════════════════════════════════════════════════════════════════════ */
+const SIZE_MAP={S:{w:320,cols:1,span:2},M:{w:440,cols:1,span:2},L:{w:640,cols:2,span:3},XL:{w:960,cols:2,span:6}};
+function SignalCard({signal:sig,gaugeId="m",size="M",onResize}){
+  const gc=gradeAccent(sig.grade),pp=v=>v?parseFloat(v.replace(/[$,]/g,"")):null,en=pp(sig.entry?.value),sn=pp(sig.stop?.value);
+  const xt=SIGNAL_EXTRAS[sig.symbol];
+  const sz=SIZE_MAP[size]||SIZE_MAP.M;
+  const nextSize={S:"M",M:"L",L:"XL",XL:"S"}[size];
+  return<div style={{gridColumn:`span ${sz.span}`,width:"100%",maxWidth:sz.w,background:C.card,border:`1px solid ${gc}22`,borderRadius:16,padding:"0 20px 24px",boxShadow:`0 4px 24px rgba(0,0,0,.4),0 0 40px ${gc}08`,transition:"border-color .4s,box-shadow .4s,max-width .3s",animation:"fadeIn .4s ease both"}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0 6px",borderBottom:`1px solid ${C.cardBorder}`,marginBottom:8}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:14,fontWeight:700,color:C.green,letterSpacing:1}}>SIGNA</span><span style={{fontSize:10,color:C.textMuted}}>SIGNAL</span></div><div style={{display:"flex",alignItems:"center",gap:10,fontSize:11,color:C.textSecondary}}><span style={{fontWeight:600}}>{sig.symbol}</span><span>·</span><span>{sig.timeframe}</span><span>·</span><span style={{color:C.textMuted}}>v{sig.version}</span>{sig.dataDelay&&<Clock size={11} color={C.red}/>}{onResize&&<button onClick={()=>onResize(nextSize)} title={`Resize (current: ${size}) → ${nextSize}`} style={{marginLeft:4,background:"#0a0e17",border:`1px solid ${C.cardBorder}`,borderRadius:5,color:C.cyan,fontSize:9,fontWeight:700,padding:"2px 7px",cursor:"pointer",letterSpacing:.5}}>⇱ {size}</button>}</div></div>
+    {sig.dataDelay&&<div style={{display:"flex",alignItems:"center",gap:6,background:"#ff444418",border:"1px solid #ff444433",borderRadius:8,padding:"6px 12px",marginBottom:10}}><Clock size={13} color={C.red}/><span style={{fontSize:11,color:C.red,fontWeight:600}}>Delayed Signal — data is {sig.dataDelay}m behind real-time</span></div>}
+    {sig.regimeDemotion>0&&<div style={{display:"flex",alignItems:"center",gap:8,background:`${C.amber}12`,border:`1px solid ${C.amber}44`,borderRadius:8,padding:"6px 12px",marginBottom:10}}><AlertTriangle size={13} color={C.amber}/><span style={{fontSize:11,color:C.amber,fontWeight:600}}>Macro regime: demoted {sig.regimeDemotion} grade{sig.regimeDemotion>1?"s":""} (raw grade was <b>{sig.rawGrade}</b>) — {sig.regime==="DOWNTREND"?"broad market in downtrend":"market under pressure"}</span></div>}
+    <BullishGauge pct={sig.bullishPct} sentiment={sig.sentiment} id={gaugeId}/>
+    <GradeBadge grade={sig.grade}/>
+    <SizeLegend activeSize={sig.positionSize}/>
+    {xt&&<WhyBox whySocial={xt.whySocial} whyTechnical={xt.whyTechnical} verdict={xt.verdict}/>}
+    {xt&&<SectorTrendScale sector={xt.sector} sectorTrend={xt.sectorTrend} stockTrend={xt.stockTrend} alignmentScore={xt.alignmentScore}/>}
+    {sig.noSetup&&<div style={{display:"flex",alignItems:"center",gap:8,background:C.amberDim,border:`1px solid ${C.amber}33`,borderRadius:8,padding:"8px 12px",marginBottom:12}}><AlertTriangle size={14} color={C.amber}/><span style={{fontSize:12,color:C.amber,fontWeight:600}}>No setup — wait for clearer signal</span></div>}
+    {sig.entry&&<div style={{display:"flex",gap:8,marginBottom:8}}><TradeParam label="Entry" value={sig.entry.value} sub={sig.entry.sub} colour={C.green} icon={Target} rawValue={sig.entry.value}/><TradeParam label="Stop" value={sig.stop.value} sub={sig.stop.sub} colour={C.red} icon={Shield} rawValue={sig.stop.value}/></div>}
+    {sig.target&&<div style={{display:"flex",gap:8,marginBottom:4}}><TradeParam label="Target" value={sig.target.value} sub={sig.target.sub} colour={C.amber} icon={TrendingUp} rawValue={sig.target.value}/></div>}
+    {en&&sn&&<PositionSizer entry={en} stopLoss={sn} target={pp(sig.target?.value)} grade={sig.grade} noSetup={sig.noSetup}/>}
+    <SH>Key Metrics</SH>
+    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:4}}><MetricPill label="R:R" value={sig.riskReward}/><MetricPill label="Grade" value={sig.grade} accent={gc}/><MetricPill label="Score" value={`${sig.score}/100`} accent={sig.score>=70?C.green:sig.score>=50?C.amber:C.red}/><MetricPill label="ADX" value={sig.adx}/><MetricPill label="VOL" value={sig.volRatio} accent={sig.volColour}/>{xt&&<MetricPill label="MA150" value={`${xt.ma150Status==="above"?"▲":"▼"} ${xt.ma150Distance}`} accent={xt.ma150Status==="above"?C.green:C.red}/>}</div>
+    {xt&&<AnalystChartPanel analystConsensus={xt.analystConsensus} chartPattern={xt.chartPattern}/>}
+    <LowRR rr={sig.riskReward}/>
+    <SH>Signal Checklist</SH>
+    <div style={{display:"grid",gridTemplateColumns:`repeat(${sz.cols},1fr)`,columnGap:16}}>
+      {sig.checklist.map((it,i)=><ChecklistItem key={i} label={it.label} status={it.status}/>)}
+    </div>
+    {sig.earlyWarnings?.length>0&&<><SH trailing="leading indicators">Early Warnings</SH>{sig.earlyWarnings.map((w,i)=><EarlyWarning key={i} pattern={w.pattern} badge={w.badge} description={w.description}/>)}</>}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:18,paddingTop:10,borderTop:`1px solid ${C.cardBorder}`,fontSize:10,color:C.textMuted}}><span style={{fontWeight:700,color:C.green,letterSpacing:1}}>SIGNA</span><span>{sig.symbol} · {sig.timeframe}</span></div>
+  </div>
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MOMENTUM SIDEBAR
+   ══════════════════════════════════════════════════════════════════════════ */
+function classifySent(vel,volR,avgS){
+  if(vel>100&&volR<0.5&&avgS>0.5)return{colour:C.red,icon:AlertTriangle,label:"BULL TRAP"};
+  if(volR>=1.5&&vel<50)return{colour:C.purple,icon:Building,label:"INSTITUTIONAL"};
+  if(vel>100&&volR<1.0)return{colour:C.amber,icon:Users,label:"RETAIL HYPE"};
+  if(vel>50&&volR>=1.0)return{colour:C.green,icon:TrendingUp,label:"CONFIRMED"};
+  return{colour:C.textMuted,icon:null,label:"NEUTRAL"};
+}
+
+function VelBar({velocity,max}){const p=Math.min(Math.abs(velocity)/Math.max(max,1)*100,100),c=velocity>200?C.red:velocity>100?C.amber:velocity>0?C.green:C.textMuted;return<div style={{width:"100%",height:4,background:"#1a2236",borderRadius:2,overflow:"hidden"}}><div style={{width:`${p}%`,height:"100%",background:c,borderRadius:2,boxShadow:`0 0 6px ${c}44`,transition:"width .5s ease"}}/></div>}
+
+// Badge → colour map
+const BADGE_COLOUR={green:C.green,red:C.red,amber:C.amber,neutral:C.textMuted};
+
+function SocialEdgeBar({edge}){
+  const p=Math.max(0,Math.min(100,edge||0));
+  const c=p>=70?C.green:p>=45?C.amber:p>=20?C.red:C.textMuted;
+  return<div style={{width:"100%",height:3,background:"#1a2236",borderRadius:2,overflow:"hidden"}}>
+    <div style={{width:`${p}%`,height:"100%",background:c,boxShadow:`0 0 6px ${c}55`,transition:"width .5s ease"}}/>
+  </div>;
+}
+
+function TickerRow({t,onClick,active}){
+  const col=BADGE_COLOUR[t.badgeColour]||C.textMuted;
+  const gAcc=gradeAccent(t.grade);
+  const sentCol=t.sentimentDir==="bullish"?C.green:t.sentimentDir==="bearish"?C.red:C.textMuted;
+  const sentSym=t.sentimentDir==="bullish"?"▲":t.sentimentDir==="bearish"?"▼":"–";
+  const vel=t.mentionVelocity||0;
+  return<div onClick={()=>onClick?.(t.symbol)} style={{padding:"10px 12px",borderBottom:`1px solid ${C.cardBorder}`,cursor:"pointer",transition:"background .2s",background:active?`${C.green}08`:"transparent",borderLeft:active?`3px solid ${col}`:`3px solid transparent`}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontSize:13,fontWeight:700,color:C.textPrimary}}>{t.symbol}</span>
+        {t.grade&&<span style={{fontSize:9,fontWeight:700,color:gAcc,background:`${gAcc}22`,padding:"1px 6px",borderRadius:3}}>{t.grade}</span>}
+      </div>
+      <span style={{fontSize:9,fontWeight:800,color:col,background:`${col}18`,border:`1px solid ${col}44`,padding:"2px 7px",borderRadius:4,letterSpacing:.5}}>{t.badge}</span>
+    </div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,fontSize:10}}>
+      <span style={{color:C.textMuted}}>Edge</span>
+      <span style={{color:col,fontWeight:700}}>{t.socialEdge}/100</span>
+    </div>
+    <SocialEdgeBar edge={t.socialEdge}/>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6,fontSize:10,color:C.textSecondary}}>
+      <span>
+        <span style={{color:sentCol,fontWeight:700}}>{sentSym} {t.sentimentDir||"mixed"}</span>
+        {t.stBullishPct!=null&&<span style={{color:C.textMuted}}> ({t.stBullishPct}%)</span>}
+      </span>
+      <span style={{color:vel>=150?C.red:vel>=50?C.amber:vel>0?C.green:C.textMuted}}>
+        {vel>0?"+":""}{vel}% chatter
+      </span>
+    </div>
+    <div style={{fontSize:9,color:C.textMuted,marginTop:6,lineHeight:1.4,fontStyle:"italic"}}>{t.reason}</div>
+    <div style={{fontSize:9,color:C.textMuted,marginTop:3}}>{(t.mentions||0).toLocaleString()} mentions · {t.stMsgs||0} ST</div>
+  </div>;
+}
+
+const TABS=[
+  {k:"opportunities",label:"OPPORTUNITIES",hint:"Highest social-edge (technicals + alignment)",match:t=>["CONVICTION","STEALTH","WATCH"].includes(t.badge)},
+  {k:"traps",        label:"TRAPS",        hint:"Retail chasing vs weak technicals — avoid",match:t=>["TRAP RISK","EXHAUSTION"].includes(t.badge)},
+  {k:"stealth",      label:"STEALTH",      hint:"Strong technicals, crowd not here yet",       match:t=>t.badge==="STEALTH"},
+];
+
+function MomentumSidebar({tickers,active,onClickTicker}){
+  const[tab,setTab]=useState("opportunities");
+  const[showQuiet,setShowQuiet]=useState(false);
+  const active_def=TABS.find(x=>x.k===tab)||TABS[0];
+
+  const filtered=useMemo(()=>{
+    const base=(tickers||[]).filter(t=>showQuiet?true:(t.badge!=="QUIET"&&t.badge!=="NO DATA"));
+    const match=base.filter(active_def.match);
+    return match.sort((a,b)=>(b.socialEdge||0)-(a.socialEdge||0));
+  },[tickers,tab,showQuiet]);
+
+  const counts=useMemo(()=>{
+    const c={};
+    TABS.forEach(x=>{c[x.k]=(tickers||[]).filter(x.match).length;});
+    return c;
+  },[tickers]);
+
+  return<div style={{width:340,background:C.card,border:`1px solid ${C.cardBorder}`,borderRadius:16,overflow:"hidden",display:"flex",flexDirection:"column",flexShrink:0}}>
+    <div style={{padding:"14px 16px 10px",borderBottom:`1px solid ${C.cardBorder}`}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <Flame size={14} color={C.amber}/>
+          <span style={{fontSize:12,fontWeight:700,color:C.textPrimary,letterSpacing:1,textTransform:"uppercase"}}>Social Edge</span>
+        </div>
+        <span style={{fontSize:9,color:C.textMuted}}>{(tickers||[]).length} tracked</span>
+      </div>
+      <div style={{display:"flex",gap:4,marginBottom:8}}>
+        {TABS.map(x=>(
+          <button key={x.k} onClick={()=>setTab(x.k)}
+            title={x.hint}
+            style={{flex:1,padding:"5px 4px",fontSize:9,fontWeight:700,background:tab===x.k?"#1a2236":"transparent",border:`1px solid ${tab===x.k?C.cyan:C.cardBorder}`,borderRadius:6,color:tab===x.k?C.cyan:C.textMuted,cursor:"pointer",letterSpacing:.5}}>
+            {x.label} <span style={{color:C.textMuted,fontWeight:600}}>{counts[x.k]||0}</span>
+          </button>
+        ))}
+      </div>
+      <div style={{fontSize:9,color:C.textMuted,lineHeight:1.4}}>{active_def.hint}</div>
+      <label style={{display:"flex",alignItems:"center",gap:6,marginTop:8,fontSize:10,color:C.textSecondary,cursor:"pointer",userSelect:"none"}}>
+        <input type="checkbox" checked={showQuiet} onChange={e=>setShowQuiet(e.target.checked)} style={{accentColor:C.cyan}}/>
+        Show quiet / no-data tickers
+      </label>
+    </div>
+    <div style={{flex:1,overflowY:"auto",maxHeight:700}}>
+      {filtered.length===0
+        ? <div style={{padding:"28px 16px",textAlign:"center",color:C.textMuted,fontSize:11,lineHeight:1.6}}>
+            No tickers match this category right now.<br/>
+            <span style={{fontSize:9}}>Try another tab or toggle "Show quiet".</span>
+          </div>
+        : filtered.map(t=><TickerRow key={t.symbol} t={t} onClick={onClickTicker} active={active===t.symbol}/>)}
+    </div>
+    <div style={{padding:"8px 16px",borderTop:`1px solid ${C.cardBorder}`,display:"flex",gap:8,flexWrap:"wrap"}}>
+      {[{l:"Conviction",c:C.green},{l:"Stealth",c:C.green},{l:"Mixed",c:C.amber},{l:"Trap",c:C.red}].map(x=>
+        <div key={x.l} style={{display:"flex",alignItems:"center",gap:4}}>
+          <div style={{width:6,height:6,borderRadius:"50%",background:x.c}}/>
+          <span style={{fontSize:8,color:C.textMuted,letterSpacing:.3}}>{x.l}</span>
+        </div>)}
+    </div>
+  </div>;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ALL SIGNAL DATA — one entry per momentum ticker
+   ══════════════════════════════════════════════════════════════════════════ */
+const ALL_SIGNALS = {
+  JRNL: {symbol:"JRNL",timeframe:"1D",version:"3",bullishPct:85,grade:"A",sentiment:"BULLISH",positionSize:"full size",entry:{value:"$8.4400",sub:"market"},stop:{value:"$7.2000",sub:"14.7%"},target:{value:"$10.920",sub:"29.4%"},riskReward:"2.0:1",score:85,adx:36,volRatio:"0.5×",volColour:C.amber,dataDelay:null,checklist:[{label:"Full bull stack:\nprice>EMA21>EMA50>SMA200",status:"CONFIRMED"},{label:"Trend score strong: 78/100",status:"CONFIRMED"},{label:"MACD bullish +\nhistogram expanding",status:"CONFIRMED"},{label:"RSI 65 — bullish zone",status:"CONFIRMED"},{label:"ICS 0 — institutional distribution",status:"BEARISH"},{label:"OBV rising + CMF positive — volume confirms",status:"CONFIRMED"},{label:"Volume thin (0.5× avg) — low conviction",status:"ALERT"}],earlyWarnings:[]},
+
+  NVDA: {symbol:"NVDA",timeframe:"1D",version:"3",bullishPct:72,grade:"B",sentiment:"BULLISH",positionSize:"half size",entry:{value:"$142.85",sub:"market"},stop:{value:"$136.20",sub:"4.7%"},target:{value:"$156.15",sub:"9.3%"},riskReward:"2.0:1",score:78,adx:42,volRatio:"2.1×",volColour:C.green,dataDelay:null,checklist:[{label:"Full bull stack:\nprice>EMA21>EMA50>SMA200",status:"CONFIRMED"},{label:"Trend score strong: 82/100",status:"CONFIRMED"},{label:"MACD bullish +\nhistogram expanding",status:"CONFIRMED"},{label:"RSI 62 — bullish zone",status:"CONFIRMED"},{label:"ICS 3.2 — institutional accumulation",status:"CONFIRMED"},{label:"Volume strong (2.1× avg) — high conviction",status:"CONFIRMED"}],earlyWarnings:[]},
+
+  BTC: {symbol:"BTC",timeframe:"1D",version:"3",bullishPct:59,grade:"C",sentiment:"NEUTRAL",positionSize:"starter",entry:null,stop:null,target:null,noSetup:true,riskReward:"0.2×",score:59,adx:16,volRatio:"0.2×",volColour:C.amber,dataDelay:15,checklist:[{label:"Price above EMA50",status:"CONFIRMED"},{label:"Trend score weak: 27/100",status:"BEARISH"},{label:"MACD bullish +\nhistogram expanding",status:"CONFIRMED"},{label:"RSI 60 — bullish zone",status:"CONFIRMED"},{label:"Volume thin (0.2× avg) — low conviction",status:"ALERT"}],earlyWarnings:[{pattern:"INSIDE BAR + LOW VOLUME",badge:"LEADING",description:"Price coiling inside prior bar range on drying volume — classic pre-breakout setup."}]},
+
+  TSLA: {symbol:"TSLA",timeframe:"1D",version:"3",bullishPct:68,grade:"B",sentiment:"BULLISH",positionSize:"half size",entry:{value:"$265.40",sub:"market"},stop:{value:"$251.80",sub:"5.1%"},target:{value:"$292.60",sub:"10.2%"},riskReward:"2.0:1",score:70,adx:31,volRatio:"0.3×",volColour:C.red,dataDelay:null,checklist:[{label:"Full bull stack:\nprice>EMA21>EMA50>SMA200",status:"CONFIRMED"},{label:"Trend score strong: 72/100",status:"CONFIRMED"},{label:"MACD bullish +\nhistogram contracting",status:"LEADING"},{label:"RSI 58 — bullish zone",status:"CONFIRMED"},{label:"ICS -1.5 — institutional distribution",status:"BEARISH"},{label:"Volume thin (0.3× avg) — low conviction",status:"ALERT"}],earlyWarnings:[{pattern:"VOLUME DRY-UP + HIGH HYPE",badge:"LEADING",description:"Social mentions surging +210% but volume at 0.3× avg. Classic retail hype divergence — wait for volume confirmation before entry."}]},
+
+  AAPL: {symbol:"AAPL",timeframe:"1D",version:"3",bullishPct:81,grade:"A",sentiment:"BULLISH",positionSize:"full size",entry:{value:"$198.50",sub:"market"},stop:{value:"$191.30",sub:"3.6%"},target:{value:"$220.10",sub:"10.9%"},riskReward:"3.0:1",score:83,adx:38,volRatio:"1.8×",volColour:C.green,dataDelay:null,checklist:[{label:"Full bull stack:\nprice>EMA21>EMA50>SMA200",status:"CONFIRMED"},{label:"Trend score strong: 90/100",status:"CONFIRMED"},{label:"MACD bullish +\nhistogram expanding",status:"CONFIRMED"},{label:"RSI 64 — bullish zone",status:"CONFIRMED"},{label:"ICS 2.8 — institutional accumulation",status:"CONFIRMED"},{label:"OBV rising + CMF positive — volume confirms",status:"CONFIRMED"},{label:"Volume strong (1.8× avg) — high conviction",status:"CONFIRMED"}],earlyWarnings:[]},
+
+  AMD: {symbol:"AMD",timeframe:"1D",version:"3",bullishPct:52,grade:"C",sentiment:"NEUTRAL",positionSize:"starter",entry:{value:"$168.20",sub:"market"},stop:{value:"$158.90",sub:"5.5%"},target:{value:"$182.15",sub:"8.3%"},riskReward:"1.5:1",score:55,adx:19,volRatio:"0.4×",volColour:C.amber,dataDelay:null,checklist:[{label:"Price above EMA50 only",status:"CONFIRMED"},{label:"Trend score moderate: 45/100",status:"LEADING"},{label:"MACD bearish +\nhistogram contracting",status:"LEADING"},{label:"RSI 48 — neutral zone",status:"ALERT"},{label:"Volume thin (0.4× avg) — low conviction",status:"ALERT"},{label:"ICS -0.8 — institutional distribution",status:"BEARISH"}],earlyWarnings:[{pattern:"SQUEEZE LOCKED",badge:"LEADING",description:"Bollinger Bands inside Keltner Channels — energy building for a directional move. Wait for squeeze to fire before committing."}]},
+
+  GME: {symbol:"GME",timeframe:"1D",version:"3",bullishPct:35,grade:"D",sentiment:"BEARISH",positionSize:"no setup",entry:null,stop:null,target:null,noSetup:true,riskReward:"N/A",score:35,adx:12,volRatio:"0.2×",volColour:C.red,dataDelay:null,checklist:[{label:"Price below all moving averages",status:"BEARISH"},{label:"Trend score weak: 15/100",status:"BEARISH"},{label:"MACD bearish +\nhistogram expanding bearish",status:"BEARISH"},{label:"RSI 38 — bearish zone",status:"BEARISH"},{label:"Volume thin (0.2× avg) — low conviction",status:"ALERT"},{label:"Social hype extreme (350%) but zero volume support",status:"ALERT"}],earlyWarnings:[{pattern:"BULL TRAP WARNING",badge:"ALERT",description:"Social mentions surging +350% with sentiment at 95% bullish, but volume at 0.2× and all technicals bearish. Classic bull trap — avoid."}]},
+
+  SOFI: {symbol:"SOFI",timeframe:"1D",version:"3",bullishPct:66,grade:"B",sentiment:"BULLISH",positionSize:"half size",entry:{value:"$10.85",sub:"market"},stop:{value:"$10.15",sub:"6.5%"},target:{value:"$12.25",sub:"12.9%"},riskReward:"2.0:1",score:68,adx:28,volRatio:"1.4×",volColour:C.green,dataDelay:null,checklist:[{label:"Full bull stack:\nprice>EMA21>EMA50>SMA200",status:"CONFIRMED"},{label:"Trend score strong: 65/100",status:"CONFIRMED"},{label:"MACD bullish +\nhistogram expanding",status:"CONFIRMED"},{label:"RSI 57 — bullish zone",status:"CONFIRMED"},{label:"ICS 1.2 — institutional accumulation",status:"CONFIRMED"},{label:"Volume healthy (1.4× avg)",status:"CONFIRMED"}],earlyWarnings:[]},
+};
+
+const MOMENTUM=[
+  {symbol:"JRNL",grade:"A",mentionVelocity:245,mentions:3420,bullishPct:85,volumeRatio:0.5,avgSentiment:0.72},
+  {symbol:"NVDA",grade:"B",mentionVelocity:130,mentions:12500,bullishPct:72,volumeRatio:2.1,avgSentiment:0.65},
+  {symbol:"BTC",grade:"C",mentionVelocity:78,mentions:45000,bullishPct:59,volumeRatio:0.9,avgSentiment:0.55},
+  {symbol:"TSLA",grade:"B",mentionVelocity:210,mentions:8900,bullishPct:68,volumeRatio:0.3,avgSentiment:0.85},
+  {symbol:"AAPL",grade:"A",mentionVelocity:45,mentions:6200,bullishPct:81,volumeRatio:1.8,avgSentiment:0.60},
+  {symbol:"AMD",grade:"C",mentionVelocity:190,mentions:5100,bullishPct:52,volumeRatio:0.4,avgSentiment:0.90},
+  {symbol:"GME",grade:"D",mentionVelocity:350,mentions:22000,bullishPct:35,volumeRatio:0.2,avgSentiment:0.95},
+  {symbol:"SOFI",grade:"B",mentionVelocity:62,mentions:2100,bullishPct:66,volumeRatio:1.4,avgSentiment:0.58},
+];
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DASHBOARD — click sidebar ticker → show its signal card
+   ══════════════════════════════════════════════════════════════════════════ */
+function App(){
+  const[active,setActive]=useState("JRNL");
+  const[view,setView]=useState("grid");
+  const[focusTicker,setFocusTicker]=useState(null);
+  const[liveSignals,setLiveSignals]=useState(null);   // populated from /api/signals
+  const[apiStatus,setApiStatus]=useState("connecting"); // connecting | live | offline
+  const[lastUpdate,setLastUpdate]=useState(null);
+  const[cardSizes,setCardSizes]=useState(()=>{try{return JSON.parse(localStorage.getItem("signaCardSizes")||"{}")}catch(e){return{}}});
+  const setCardSize=useCallback((sym,sz)=>setCardSizes(prev=>{const n={...prev,[sym]:sz};try{localStorage.setItem("signaCardSizes",JSON.stringify(n))}catch(e){}return n}),[]);
+  const[searchQ,setSearchQ]=useState("");
+  const[searchState,setSearchState]=useState("idle"); // idle | scanning | error
+  const[searchErr,setSearchErr]=useState(null);
+  const[scanned,setScanned]=useState({}); // symbol -> signal payload from /api/scan
+  const[regime,setRegime]=useState(null); // market regime (macro gate)
+  const[regimeOpen,setRegimeOpen]=useState(false);
+
+  // Fetch regime every 5 min (server caches 30 min so most calls are instant)
+  useEffect(()=>{
+    let stopped=false;
+    const load=async()=>{
+      try{
+        const r=await fetch("/api/market-regime");
+        if(!r.ok)return;
+        const j=await r.json();
+        if(!stopped)setRegime(j);
+      }catch(e){}
+    };
+    load();
+    const id=setInterval(load,5*60*1000);
+    return()=>{stopped=true;clearInterval(id);};
+  },[]);
+
+  const runSearch=useCallback(async(raw)=>{
+    const sym=(raw||"").toUpperCase().trim();
+    if(!sym)return;
+    if(!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(sym)){
+      setSearchState("error");setSearchErr("Invalid symbol format");return;
+    }
+    setSearchState("scanning");setSearchErr(null);
+    try{
+      const r=await fetch(`/api/scan/${encodeURIComponent(sym)}`);
+      const j=await r.json();
+      if(!r.ok){
+        setSearchState("error");
+        const userMsg=j.userMessage||(j.error==="insufficient_data"?`${sym}: only ${j.candleCount||0} candles (need 200+)`:(j.error||"scan failed"));
+        setSearchErr(userMsg);
+        return;
+      }
+      const merged={...(ALL_SIGNALS[sym]||{}),...j,version:j.version||1,dataDelay:j.data_delay_min||null};
+      setScanned(prev=>({...prev,[sym]:merged}));
+      setActive(sym);setFocusTicker(sym);setView("focus");
+      setSearchState("idle");setSearchQ("");
+      if(j.stale){setSearchErr(`Showing cached data (${j.staleAgeMin}m old) — ${j.staleReason?.userMessage||"live sources unavailable"}`);setSearchState("error");}
+    }catch(e){
+      setSearchState("error");setSearchErr(e.message||"network error");
+    }
+  },[]);
+
+  // Poll live API
+  useEffect(()=>{
+    let stopped=false;
+    const load=async()=>{
+      try{
+        const r=await fetch("/api/signals");
+        if(!r.ok)throw 0;
+        const arr=await r.json();
+        if(stopped)return;
+        // Merge live signal data with UI extras (sector/why/analyst/pattern) keyed by symbol
+        const merged={};
+        for(const s of arr){
+          const base=ALL_SIGNALS[s.symbol]||{};
+          merged[s.symbol]={...base,...s,version:s.version||1,dataDelay:s.data_delay_min||null};
+        }
+        setLiveSignals(merged);
+        setApiStatus("live");
+        setLastUpdate(new Date());
+      }catch(e){
+        if(!stopped){setApiStatus("offline");}
+      }
+    };
+    load();
+    const id=setInterval(load,15000);
+    return()=>{stopped=true;clearInterval(id);};
+  },[]);
+
+  // Active dataset: live when available, else built-in demo, plus on-demand scanned tickers
+  const SIGNALS=useMemo(()=>({...(liveSignals||ALL_SIGNALS),...scanned}),[liveSignals,scanned]);
+  const tickerList=Object.keys(SIGNALS);
+
+  // Live momentum from /api/momentum (ApeWisdom-backed). Falls back to demo only if endpoint fails.
+  const[liveMomentum,setLiveMomentum]=useState(null);
+  useEffect(()=>{
+    let stopped=false;
+    const load=async()=>{
+      try{
+        const r=await fetch("/api/momentum");
+        if(!r.ok)throw 0;
+        const j=await r.json();
+        if(stopped||!Array.isArray(j.tickers))return;
+        setLiveMomentum(j.tickers);
+      }catch(e){ if(!stopped)setLiveMomentum(null); }
+    };
+    load();
+    const id=setInterval(load,60000); // 1-min refresh; ApeWisdom updates ~hourly
+    return()=>{stopped=true;clearInterval(id);};
+  },[]);
+
+  const MOMENTUM_LIVE=useMemo(()=>{
+    if(Array.isArray(liveMomentum)&&liveMomentum.length){
+      return liveMomentum.map(m=>{
+        const sig=liveSignals?.[m.symbol];
+        return {
+          symbol:m.symbol,
+          grade:m.grade||sig?.grade||null,
+          mentionVelocity:m.velocityPct||0,
+          mentions:m.mentions||0,
+          bullishPct:m.bullishPct||sig?.bullishPct||0,
+          volumeRatio:parseFloat((sig?.volRatio||"1×").replace("×",""))||1,
+          rank:m.rank, rank24hAgo:m.rank24hAgo,
+          // Social-edge fields from /api/momentum
+          socialEdge:m.socialEdge??0,
+          badge:m.badge||"WATCH",
+          badgeColour:m.badgeColour||"neutral",
+          reason:m.reason||"",
+          stMsgs:m.stMsgs||0,
+          stBullishPct:m.stBullishPct,
+          sentimentDir:m.sentimentDir||"mixed",
+          hasSocial:!!m.hasSocial,
+          chatterScore:m.chatterScore||0,
+        };
+      });
+    }
+    if(!liveSignals)return MOMENTUM.map(m=>({...m,socialEdge:50,badge:"WATCH",badgeColour:"neutral",reason:"demo data",sentimentDir:"mixed"}));
+    return Object.values(liveSignals).map(s=>({symbol:s.symbol,grade:s.grade,mentionVelocity:0,mentions:0,bullishPct:s.bullishPct||s.score,volumeRatio:parseFloat((s.volRatio||"1×").replace("×",""))||1,socialEdge:30,badge:"QUIET",badgeColour:"neutral",reason:"No social data yet",sentimentDir:"mixed",stMsgs:0,chatterScore:0}));
+  },[liveMomentum,liveSignals]);
+
+  const handleTickerClick=(symbol)=>{
+    setActive(symbol);
+    setFocusTicker(symbol);
+    setView("focus");
+  };
+
+  const backToGrid=()=>{setView("grid");setFocusTicker(null)};
+
+  const focusSignal=focusTicker?SIGNALS[focusTicker]:null;
+
+  return<div style={{minHeight:"100vh",background:C.bg,padding:24}}>
+    {/* Top bar */}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24,paddingBottom:16,borderBottom:`1px solid ${C.cardBorder}`}}>
+      <div style={{display:"flex",alignItems:"baseline",gap:10}}>
+        <span style={{fontSize:22,fontWeight:800,color:C.green,letterSpacing:2}}>SIGNA</span>
+        <span style={{fontSize:12,color:C.textMuted,fontWeight:500}}>Signal Dashboard v3</span>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:16,fontSize:11,color:C.textSecondary}}>
+        {/* Search any ticker (on-demand scan) */}
+        <form onSubmit={e=>{e.preventDefault();runSearch(searchQ);}} style={{display:"flex",alignItems:"center",gap:6}}>
+          <input value={searchQ} onChange={e=>{setSearchQ(e.target.value);if(searchState==="error")setSearchState("idle");}}
+            placeholder="Search any ticker (e.g. NFLX)"
+            style={{background:C.card,border:`1px solid ${searchState==="error"?C.amber:C.cardBorder}`,borderRadius:8,padding:"5px 10px",fontSize:11,color:C.textPrimary,width:200,outline:"none"}}/>
+          <button type="submit" disabled={searchState==="scanning"||!searchQ.trim()}
+            style={{background:searchState==="scanning"?C.cardBorder:C.green,color:searchState==="scanning"?C.textMuted:"#000",border:"none",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:searchState==="scanning"?"wait":"pointer",opacity:searchQ.trim()?1:.4}}>
+            {searchState==="scanning"?"SCANNING…":"SCAN"}
+          </button>
+          {searchState==="error"&&<span style={{color:C.amber,fontSize:10,fontWeight:600,marginLeft:4}}>{searchErr}</span>}
+        </form>
+        <span>{tickerList.length} active signals</span><span>·</span><span>{MOMENTUM_LIVE.length} tracked tickers</span>
+        {apiStatus==="live"&&<span style={{display:"inline-flex",alignItems:"center",gap:4,background:`${C.green}18`,padding:"3px 10px",borderRadius:12,color:C.green,fontWeight:600}}><span style={{width:6,height:6,borderRadius:"50%",background:C.green,animation:"livePulse 2s infinite"}}/>LIVE API {lastUpdate&&`· ${lastUpdate.toLocaleTimeString()}`}</span>}
+        {apiStatus==="connecting"&&<span style={{display:"inline-flex",alignItems:"center",gap:4,background:`${C.cyan}18`,padding:"3px 10px",borderRadius:12,color:C.cyan,fontWeight:600}}>CONNECTING…</span>}
+        {apiStatus==="offline"&&<span style={{display:"inline-flex",alignItems:"center",gap:4,background:`${C.amber}18`,padding:"3px 10px",borderRadius:12,color:C.amber,fontWeight:600}}>DEMO DATA (API offline)</span>}
+      </div>
+    </div>
+
+    {/* Market regime banner (macro gate) */}
+    {regime&&regime.state&&regime.state!=="UNKNOWN"&&(()=>{
+      const s=regime.state;
+      const col=s==="CONFIRMED_UPTREND"?C.green:s==="UPTREND_UNDER_PRESSURE"?C.amber:C.red;
+      const label=s==="CONFIRMED_UPTREND"?"CONFIRMED UPTREND":s==="UPTREND_UNDER_PRESSURE"?"UPTREND UNDER PRESSURE":"DOWNTREND";
+      const msg=s==="CONFIRMED_UPTREND"?"Broad market supports breakouts. Signals at full strength.":s==="UPTREND_UNDER_PRESSURE"?"Be selective. Signals demoted 1 grade. Tighten stops, trim losers.":"Bear territory. Signals demoted 2 grades (max grade: C). Consider cash.";
+      return <div onClick={()=>setRegimeOpen(o=>!o)} style={{marginBottom:20,background:`${col}12`,border:`1px solid ${col}55`,borderRadius:12,padding:"10px 16px",cursor:"pointer",transition:"background .2s"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{width:10,height:10,borderRadius:"50%",background:col,boxShadow:`0 0 10px ${col}`}}/>
+            <span style={{fontSize:12,fontWeight:800,color:col,letterSpacing:1.2}}>MARKET REGIME · {label}</span>
+            <span style={{fontSize:11,color:C.textMuted}}>score {regime.score}/100</span>
+          </div>
+          <span style={{fontSize:11,color:C.textSecondary,flex:"1 1 280px",minWidth:0}}>{msg}</span>
+          <span style={{fontSize:10,color:C.textMuted,fontWeight:700}}>{regimeOpen?"▲ hide":"▼ details"}</span>
+        </div>
+        {regimeOpen&&<div style={{marginTop:12,paddingTop:10,borderTop:`1px solid ${col}33`,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10,fontSize:11,color:C.textSecondary}}>
+          {regime.components&&<>
+            <div><span style={{color:C.textMuted}}>SPY vs 200-SMA:</span> <span style={{color:regime.components.spyAbove200?C.green:C.red,fontWeight:700}}>{regime.components.spyAbove200?"above":"below"}</span> {regime.components.spy200SlopeUp?"↑":"↓"}</div>
+            <div><span style={{color:C.textMuted}}>QQQ vs 200-SMA:</span> <span style={{color:regime.components.qqqAbove200?C.green:C.red,fontWeight:700}}>{regime.components.qqqAbove200?"above":"below"}</span></div>
+            <div><span style={{color:C.textMuted}}>Distribution days (25d):</span> <span style={{color:regime.components.distributionDays>=5?C.red:regime.components.distributionDays>=3?C.amber:C.green,fontWeight:700}}>{regime.components.distributionDays}</span></div>
+            <div><span style={{color:C.textMuted}}>Sector breadth &gt;50-SMA:</span> <span style={{color:(regime.components.breadthPct||0)>=60?C.green:(regime.components.breadthPct||0)>=40?C.amber:C.red,fontWeight:700}}>{regime.components.breadthPct}%</span></div>
+            <div><span style={{color:C.textMuted}}>VIX:</span> <span style={{color:(regime.components.vix||0)>=25?C.red:(regime.components.vix||0)>=18?C.amber:C.green,fontWeight:700}}>{regime.components.vix}</span></div>
+            <div><span style={{color:C.textMuted}}>SPY 20d return:</span> <span style={{color:(regime.components.spy20dReturnPct||0)>=0?C.green:C.red,fontWeight:700}}>{regime.components.spy20dReturnPct>0?"+":""}{regime.components.spy20dReturnPct}%</span></div>
+          </>}
+          {regime.reasons&&<div style={{gridColumn:"1/-1",fontSize:10,color:C.textMuted,lineHeight:1.6,paddingTop:6,borderTop:`1px dashed ${C.cardBorder}`}}>{regime.reasons.join(" · ")}</div>}
+          {regime.components?.sectorRS?.length>0&&<div style={{gridColumn:"1/-1",display:"flex",flexWrap:"wrap",gap:6,paddingTop:4}}>
+            <span style={{fontSize:10,color:C.textMuted,fontWeight:700,letterSpacing:.5,marginRight:4}}>SECTOR RS (20d vs SPY):</span>
+            {regime.components.sectorRS.map(s=><span key={s.etf} style={{fontSize:10,padding:"2px 7px",borderRadius:4,background:s.rs>=0?`${C.green}18`:`${C.red}18`,color:s.rs>=0?C.green:C.red,fontWeight:600}}>{s.etf} {s.rs>=0?"+":""}{s.rs}%</span>)}
+          </div>}
+        </div>}
+      </div>;
+    })()}
+
+    {/* Main layout */}
+    <div style={{display:"flex",gap:20,alignItems:"flex-start"}}>
+
+      {/* LEFT: cards area */}
+      <div style={{flex:1}}>
+
+        {/* Focus view: single card for clicked ticker */}
+        {view==="focus"&&focusSignal&&(
+          <div style={{animation:"fadeIn .3s ease both"}}>
+            <button onClick={backToGrid} style={{display:"flex",alignItems:"center",gap:6,background:"transparent",border:`1px solid ${C.cardBorder}`,borderRadius:8,padding:"6px 14px",color:C.textSecondary,fontSize:12,fontWeight:600,cursor:"pointer",marginBottom:16,transition:"all .2s"}}>
+              <ArrowLeft size={14} color={C.textSecondary}/> Back to all signals
+            </button>
+
+            <div style={{display:"flex",gap:20,alignItems:"flex-start"}}>
+              {/* The focused signal card */}
+              <SignalCard signal={focusSignal} gaugeId={`focus-${focusTicker}`}/>
+
+              {/* Context panel: why this signal */}
+              <div style={{flex:1,maxWidth:400}}>
+                <div style={{background:C.card,border:`1px solid ${C.cardBorder}`,borderRadius:16,padding:20,animation:"fadeIn .4s ease .1s both"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
+                    <span style={{fontSize:20,fontWeight:800,color:C.textPrimary}}>{focusSignal.symbol}</span>
+                    <span style={{fontSize:13,fontWeight:700,padding:"2px 10px",borderRadius:6,background:`${gradeAccent(focusSignal.grade)}22`,color:gradeAccent(focusSignal.grade),border:`1px solid ${gradeAccent(focusSignal.grade)}44`}}>Grade {focusSignal.grade}</span>
+                    <span style={{fontSize:11,color:C.textMuted}}>{focusSignal.timeframe}</span>
+                  </div>
+
+                  {/* Social context from momentum data */}
+                  {(()=>{
+                    const mt=MOMENTUM.find(m=>m.symbol===focusTicker);
+                    if(!mt)return null;
+                    const sc=classifySent(mt.mentionVelocity,mt.volumeRatio,mt.avgSentiment);
+                    const SI=sc.icon;
+                    return<>
+                      <div style={{fontSize:11,fontWeight:700,color:C.textSecondary,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>Social Context</div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+                        {[
+                          {l:"Mentions",v:mt.mentions.toLocaleString(),c:C.textPrimary},
+                          {l:"Velocity",v:(mt.mentionVelocity>0?"+":"")+mt.mentionVelocity+"%",c:mt.mentionVelocity>100?C.amber:C.green},
+                          {l:"Avg Sentiment",v:Math.round(mt.avgSentiment*100)+"%",c:mt.avgSentiment>0.7?C.green:C.amber},
+                          {l:"Volume Ratio",v:mt.volumeRatio+"×",c:mt.volumeRatio>=1?C.green:C.amber},
+                        ].map(x=><div key={x.l} style={{padding:10,background:"#111827",borderRadius:8,border:`1px solid ${C.cardBorder}`}}>
+                          <div style={{fontSize:9,color:C.textMuted,textTransform:"uppercase",letterSpacing:.5,marginBottom:2}}>{x.l}</div>
+                          <div style={{fontSize:16,fontWeight:700,color:x.c}}>{x.v}</div>
+                        </div>)}
+                      </div>
+
+                      <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",borderRadius:8,background:`${sc.colour}11`,border:`1px solid ${sc.colour}33`}}>
+                        {SI&&<SI size={14} color={sc.colour}/>}
+                        <span style={{fontSize:12,fontWeight:700,color:sc.colour}}>{sc.label}</span>
+                        <span style={{fontSize:11,color:C.textSecondary,marginLeft:4}}>
+                          {sc.label==="BULL TRAP"&&"— High hype but volume dropping. Be cautious."}
+                          {sc.label==="INSTITUTIONAL"&&"— Moderate mentions, strong volume. Smart money moving."}
+                          {sc.label==="RETAIL HYPE"&&"— High social buzz, weak volume. Needs confirmation."}
+                          {sc.label==="CONFIRMED"&&"— Social + volume aligned. High conviction."}
+                          {sc.label==="NEUTRAL"&&"— No strong signal from social data."}
+                        </span>
+                      </div>
+                    </>
+                  })()}
+
+                  {/* Quick action hint */}
+                  <div style={{marginTop:16,padding:"10px 12px",borderRadius:8,background:`${C.cyan}08`,border:`1px solid ${C.cyan}22`,fontSize:11,color:C.textSecondary}}>
+                    <span style={{fontWeight:600,color:C.cyan}}>Tip:</span> Click any Entry, Stop, or Target box to copy the value to your clipboard. Use the Position Sizer on the card to calculate exact share quantity.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Grid view: all signal cards, each independently resizable S/M/L/XL */}
+        {view==="grid"&&(
+          <div style={{display:"grid",gridTemplateColumns:"repeat(6,minmax(0,1fr))",gap:20,alignItems:"start"}}>
+            {Object.values(SIGNALS).map((sig,i)=>(
+              <SignalCard key={sig.symbol+sig.timeframe} signal={sig} gaugeId={`g${i}`} size={cardSizes[sig.symbol]||"M"} onResize={sz=>setCardSize(sig.symbol,sz)}/>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* RIGHT: Momentum Sidebar */}
+      <MomentumSidebar tickers={MOMENTUM_LIVE} active={active} onClickTicker={handleTickerClick}/>
+    </div>
+  </div>
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
