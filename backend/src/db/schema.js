@@ -9,6 +9,7 @@ const DB_PATH = process.env.DB_PATH || "./signa.db";
 export function openDb() {
   const db = new DatabaseSync(path.resolve(DB_PATH));
   try { db.exec("PRAGMA journal_mode = WAL"); } catch {}
+  db.exec("PRAGMA busy_timeout = 5000;");
   db.exec("PRAGMA foreign_keys = ON;");
   return db;
 }
