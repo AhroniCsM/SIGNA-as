@@ -29,6 +29,12 @@ export async function fetchTwelveDaily(symbol) {
       volume: parseFloat(v.volume),
     }))
     .filter(r => isFinite(r.close) && isFinite(r.volume));
+  // Drop trailing bars with volume=0. TwelveData free tier returns the current
+  // (unfinalized) session with volume=0 until late in the day, which poisons
+  // the vol_ratio calc (ends up as 0.0× and flags spurious "volume dry-up").
+  while (out.length && (out[out.length - 1].volume === 0 || !isFinite(out[out.length - 1].volume))) {
+    out.pop();
+  }
   if (out.length < 20) throw new Error(`TwelveData: only ${out.length} bars`);
   return out;
 }
