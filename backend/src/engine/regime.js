@@ -232,25 +232,84 @@ export function getMarketRegime({ force = false, wait = false } = {}) {
 //   UPTREND_UNDER_PRESSURE → demote 1 grade (A→B, B→C, etc.)
 //   DOWNTREND              → demote 2 grades, cap at max-grade C
 const GRADES = ["A", "B", "C", "D", "F"];
+
+// ── Verdict layer ────────────────────────────────────────────────
+// Single, explicit recommendation derived from the already-computed signal
+// fields. This is deterministic — no new math, just a decision table.
+//
+//   BUY       — grade A, RR>=2, vol>=1.0, no_setup=false, regime not DOWNTREND
+//   BUY_SMALL — grade B, RR>=1.5, vol>=0.8, regime not DOWNTREND
+//   WATCH     — grade B with issues, or grade C with RR>=2
+//   WAIT      — no_setup=true (ADX<15 or vol<0.3) — momentum too weak
+//   AVOID     — grade D/F, or DOWNTREND regime with grade<A
+function verdictFor(sig, regime) {
+  const grade = sig.rawGrade || sig.grade;   // use pre-regime grade for base logic
+  const rr = typeof sig.riskReward === "number" ? sig.riskReward
+           : parseFloat(sig.riskReward) || 0;
+  const vol = typeof sig.volRatioRaw === "number" ? sig.volRatioRaw
+            : parseFloat((sig.volRatio || "0").replace("×", "")) || 0;
+  const regState = regime?.state || "UNKNOWN";
+  const downtrend = regState === "DOWNTREND";
+  const underPressure = regState === "UPTREND_UNDER_PRESSURE";
+
+  const reasons = [];
+  let verdict = "WATCH";
+
+  if (sig.noSetup) {
+    verdict = "WAIT";
+    reasons.push("No setup (ADX weak or volume dry)");
+  } else if (grade === "D" || grade === "F") {
+    verdict = "AVOID";
+    reasons.push(`Grade ${grade} — signal fails threshold`);
+  } else if (downtrend && grade !== "A") {
+    verdict = "AVOID";
+    reasons.push("Macro regime: DOWNTREND");
+  } else if (grade === "A" && rr >= 2 && vol >= 1.0 && !downtrend) {
+    verdict = underPressure ? "BUY_SMALL" : "BUY";
+    reasons.push(`Grade A, R:R ${rr.toFixed(1)}, volume ${vol.toFixed(1)}×`);
+    if (underPressure) reasons.push("Regime under pressure — half size");
+  } else if (grade === "B" && rr >= 1.5 && vol >= 0.8 && !downtrend) {
+    verdict = "BUY_SMALL";
+    reasons.push(`Grade B with acceptable R:R ${rr.toFixed(1)}`);
+    if (underPressure) reasons.push("Regime under pressure");
+  } else if (grade === "C" && rr >= 2 && !downtrend) {
+    verdict = "WATCH";
+    reasons.push(`Grade C — wait for confirmation or better setup`);
+  } else {
+    verdict = "WATCH";
+    if (rr < 1.5) reasons.push(`R:R ${rr.toFixed(1)} below threshold`);
+    if (vol < 0.8) reasons.push(`Volume ${vol.toFixed(1)}× thin`);
+    if (!reasons.length) reasons.push("Mixed signals");
+  }
+
+  return { verdict, verdictReasons: reasons };
+}
+
 export function applyRegimeToSignal(signal, regime) {
-  if (!signal || !regime || regime.state === "UNKNOWN") return signal;
+  if (!signal) return signal;
+  if (!regime || regime.state === "UNKNOWN") {
+    return { ...signal, ...verdictFor(signal, regime) };
+  }
   const demotion = regime.state === "DOWNTREND" ? 2
                  : regime.state === "UPTREND_UNDER_PRESSURE" ? 1
                  : 0;
+  let out;
   if (demotion === 0) {
-    return { ...signal, rawGrade: signal.grade, regime: regime.state, regimeScore: regime.score, regimeDemotion: 0 };
+    out = { ...signal, rawGrade: signal.grade, regime: regime.state, regimeScore: regime.score, regimeDemotion: 0 };
+  } else {
+    const rawIdx = GRADES.indexOf(signal.grade);
+    const newIdx = Math.min(GRADES.length - 1, (rawIdx < 0 ? 0 : rawIdx) + demotion);
+    const adjScore = Math.max(0, signal.score - demotion * 10);
+    out = {
+      ...signal,
+      rawGrade: signal.grade,
+      grade: GRADES[newIdx],
+      score: adjScore,
+      bullishPct: adjScore,
+      regime: regime.state,
+      regimeScore: regime.score,
+      regimeDemotion: demotion,
+    };
   }
-  const rawIdx = GRADES.indexOf(signal.grade);
-  const newIdx = Math.min(GRADES.length - 1, (rawIdx < 0 ? 0 : rawIdx) + demotion);
-  const adjScore = Math.max(0, signal.score - demotion * 10);
-  return {
-    ...signal,
-    rawGrade: signal.grade,
-    grade: GRADES[newIdx],
-    score: adjScore,
-    bullishPct: adjScore,
-    regime: regime.state,
-    regimeScore: regime.score,
-    regimeDemotion: demotion,
-  };
+  return { ...out, ...verdictFor(out, regime) };
 }

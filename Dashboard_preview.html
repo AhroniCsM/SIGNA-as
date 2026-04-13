@@ -39,6 +39,20 @@
     .signa-card-resize{display:none!important}
   }
 </style>
+<!-- PostHog analytics — autocapture pageviews + clicks, plus custom events below -->
+<script>
+!function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.async=!0,p.src=s.api_host+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="capture identify alias people.set people.set_once set_config register register_once unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags getFeatureFlag getFeatureFlagPayload reloadFeatureFlags group updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures getActiveMatchingSurveys getSurveys getNextSurveyStep onSessionId".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+// PostHog project key is injected at runtime from <meta name="posthog-key"> OR
+// falls back to window.POSTHOG_KEY. Never hardcode a personal (phx_) key here —
+// only a project key (phc_) is safe for client-side. Analytics stays dormant
+// until a key is provided.
+(function(){
+  var key=(document.querySelector('meta[name="posthog-key"]')||{}).content||window.POSTHOG_KEY||'';
+  if(!key||key.indexOf('phc_')!==0){console.info('[posthog] no phc_ project key — analytics disabled');return;}
+  posthog.init(key,{api_host:'https://us.i.posthog.com',person_profiles:'identified_only',autocapture:true,capture_pageview:true,session_recording:{maskAllInputs:false}});
+})();
+window.track=(ev,props)=>{try{window.posthog&&posthog.capture(ev,props||{})}catch(e){}};
+</script>
 </head>
 <body>
 <div id="root"></div>
@@ -359,7 +373,20 @@ function SignalCard({signal:sig,gaugeId="m",size="M",onResize}){
     <SizeLegend activeSize={sig.positionSize}/>
     {xt&&<WhyBox whySocial={xt.whySocial} whyTechnical={xt.whyTechnical} verdict={xt.verdict}/>}
     {xt&&<SectorTrendScale sector={xt.sector} sectorTrend={xt.sectorTrend} stockTrend={xt.stockTrend} alignmentScore={xt.alignmentScore}/>}
-    {sig.noSetup&&<div style={{display:"flex",alignItems:"center",gap:8,background:C.amberDim,border:`1px solid ${C.amber}33`,borderRadius:8,padding:"8px 12px",marginBottom:12}}><AlertTriangle size={14} color={C.amber}/><span style={{fontSize:12,color:C.amber,fontWeight:600}}>No setup — wait for clearer signal</span></div>}
+    {sig.verdict&&(()=>{
+      const V={BUY:{l:"BUY",c:C.green,bg:`${C.green}18`,bd:`${C.green}55`,ic:"▲"},
+               BUY_SMALL:{l:"BUY SMALL",c:C.cyan,bg:`${C.cyan}18`,bd:`${C.cyan}55`,ic:"▲"},
+               WATCH:{l:"WATCH",c:C.amber,bg:`${C.amber}18`,bd:`${C.amber}55`,ic:"●"},
+               WAIT:{l:"WAIT",c:C.textMuted,bg:"#1a2236",bd:C.cardBorder,ic:"⏸"},
+               AVOID:{l:"AVOID",c:C.red,bg:`${C.red}18`,bd:`${C.red}55`,ic:"✕"}}[sig.verdict]||{l:sig.verdict,c:C.textMuted,bg:"#1a2236",bd:C.cardBorder,ic:"●"};
+      return <div style={{display:"flex",alignItems:"center",gap:10,background:V.bg,border:`1px solid ${V.bd}`,borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+        <span style={{fontSize:16,color:V.c,fontWeight:800}}>{V.ic}</span>
+        <div style={{display:"flex",flexDirection:"column",gap:2,flex:1,minWidth:0}}>
+          <span style={{fontSize:13,fontWeight:800,color:V.c,letterSpacing:1.2}}>VERDICT · {V.l}</span>
+          {sig.verdictReasons&&sig.verdictReasons.length>0&&<span style={{fontSize:11,color:C.textSecondary,lineHeight:1.4}}>{sig.verdictReasons.join(" · ")}</span>}
+        </div>
+      </div>;
+    })()}
     {sig.entry&&<div style={{display:"flex",gap:8,marginBottom:8}}><TradeParam label="Entry" value={sig.entry.value} sub={sig.entry.sub} colour={C.green} icon={Target} rawValue={sig.entry.value}/><TradeParam label="Stop" value={sig.stop.value} sub={sig.stop.sub} colour={C.red} icon={Shield} rawValue={sig.stop.value}/></div>}
     {sig.target&&<div style={{display:"flex",gap:8,marginBottom:4}}><TradeParam label="Target" value={sig.target.value} sub={sig.target.sub} colour={C.amber} icon={TrendingUp} rawValue={sig.target.value}/></div>}
     {en&&sn&&<PositionSizer entry={en} stopLoss={sn} target={pp(sig.target?.value)} grade={sig.grade} noSetup={sig.noSetup}/>}
@@ -572,6 +599,8 @@ function App(){
       setSearchState("error");setSearchErr("Invalid symbol format");return;
     }
     setSearchState("scanning");setSearchErr(null);
+    const t0=Date.now();
+    window.track&&window.track("ticker_search",{symbol:sym});
     try{
       const r=await fetch(`/api/scan/${encodeURIComponent(sym)}`);
       const j=await r.json();
@@ -579,8 +608,10 @@ function App(){
         setSearchState("error");
         const userMsg=j.userMessage||(j.error==="insufficient_data"?`${sym}: only ${j.candleCount||0} candles (need 200+)`:(j.error||"scan failed"));
         setSearchErr(userMsg);
+        window.track&&window.track("ticker_search_error",{symbol:sym,error:j.error||"unknown",ms:Date.now()-t0});
         return;
       }
+      window.track&&window.track("ticker_search_success",{symbol:sym,grade:j.grade,score:j.score,ms:Date.now()-t0,cached:!!j.cached});
       const merged={...(ALL_SIGNALS[sym]||{}),...j,version:j.version||1,dataDelay:j.data_delay_min||null};
       setScanned(prev=>({...prev,[sym]:merged}));
       setActive(sym);setFocusTicker(sym);setView("focus");
@@ -673,6 +704,7 @@ function App(){
     setActive(symbol);
     setFocusTicker(symbol);
     setView("focus");
+    window.track&&window.track("ticker_click",{symbol,from:"sidebar"});
   };
 
   const backToGrid=()=>{setView("grid");setFocusTicker(null)};
@@ -711,7 +743,7 @@ function App(){
       const col=s==="CONFIRMED_UPTREND"?C.green:s==="UPTREND_UNDER_PRESSURE"?C.amber:C.red;
       const label=s==="CONFIRMED_UPTREND"?"CONFIRMED UPTREND":s==="UPTREND_UNDER_PRESSURE"?"UPTREND UNDER PRESSURE":"DOWNTREND";
       const msg=s==="CONFIRMED_UPTREND"?"Broad market supports breakouts. Signals at full strength.":s==="UPTREND_UNDER_PRESSURE"?"Be selective. Signals demoted 1 grade. Tighten stops, trim losers.":"Bear territory. Signals demoted 2 grades (max grade: C). Consider cash.";
-      return <div onClick={()=>setRegimeOpen(o=>!o)} style={{marginBottom:20,background:`${col}12`,border:`1px solid ${col}55`,borderRadius:12,padding:"10px 16px",cursor:"pointer",transition:"background .2s"}}>
+      return <div onClick={()=>{setRegimeOpen(o=>!o);window.track&&window.track("regime_toggle",{state:s,open:!regimeOpen});}} style={{marginBottom:20,background:`${col}12`,border:`1px solid ${col}55`,borderRadius:12,padding:"10px 16px",cursor:"pointer",transition:"background .2s"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <span style={{width:10,height:10,borderRadius:"50%",background:col,boxShadow:`0 0 10px ${col}`}}/>
