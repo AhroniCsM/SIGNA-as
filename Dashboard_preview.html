@@ -391,7 +391,7 @@ function SignalCard({signal:sig,gaugeId="m",size="M",onResize}){
     {sig.target&&<div style={{display:"flex",gap:8,marginBottom:4}}><TradeParam label="Target" value={sig.target.value} sub={sig.target.sub} colour={C.amber} icon={TrendingUp} rawValue={sig.target.value}/></div>}
     {en&&sn&&<PositionSizer entry={en} stopLoss={sn} target={pp(sig.target?.value)} grade={sig.grade} noSetup={sig.noSetup}/>}
     <SH>Key Metrics</SH>
-    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:4}}><MetricPill label="R:R" value={sig.riskReward}/><MetricPill label="Grade" value={sig.grade} accent={gc}/><MetricPill label="Score" value={`${sig.score}/100`} accent={sig.score>=70?C.green:sig.score>=50?C.amber:C.red}/><MetricPill label="ADX" value={sig.adx}/><MetricPill label="VOL" value={sig.volRatio} accent={sig.volColour}/>{xt&&<MetricPill label="MA150" value={`${xt.ma150Status==="above"?"▲":"▼"} ${xt.ma150Distance}`} accent={xt.ma150Status==="above"?C.green:C.red}/>}</div>
+    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:4}}><MetricPill label="R:R" value={sig.riskReward}/><MetricPill label="Grade" value={sig.grade} accent={gc}/><MetricPill label="Score" value={`${sig.score}/100`} accent={sig.score>=70?C.green:sig.score>=50?C.amber:C.red}/><MetricPill label="ADX" value={sig.adx}/><MetricPill label="VOL" value={sig.volRatio||"N/A"} accent={sig.volRatio?sig.volColour:C.textMuted}/>{xt&&<MetricPill label="MA150" value={`${xt.ma150Status==="above"?"▲":"▼"} ${xt.ma150Distance}`} accent={xt.ma150Status==="above"?C.green:C.red}/>}</div>
     {xt&&<AnalystChartPanel analystConsensus={xt.analystConsensus} chartPattern={xt.chartPattern}/>}
     <LowRR rr={sig.riskReward}/>
     <SH>Signal Checklist</SH>

@@ -40,8 +40,23 @@ export function calcOscillatorScore(ind) {
   return Math.min(100, s);
 }
 
+// ── Volume reliability gate ──────────────────────────────────────────
+// Free-tier feeds (Massive / TwelveData / Stooq) return unreliable volume on
+// partial sessions: zero-volume bars, pre-settle counts, missing data on
+// ETFs. When any of these triggers, we SUPPRESS every volume-derived claim
+// (checklist items, early warnings, bonuses) and neutralize the volume
+// score so it neither rewards nor penalizes. Better a silent field than a lie.
+export function isVolUnreliable(ind) {
+  if (!ind) return true;
+  if (ind.vol_ratio == null || !isFinite(ind.vol_ratio)) return true;
+  if (ind.vol_ratio < 0.05) return true;                // near-zero = broken bar
+  if (ind.obv == null || !isFinite(ind.obv)) return true;
+  return false;
+}
+
 // Volume (20%) — vol ratio, OBV trend, CMF
 export function calcVolumeScore(ind) {
+  if (isVolUnreliable(ind)) return 50;   // neutral — don't reward, don't penalize
   const { vol_ratio, obv, obv_prev, cmf } = ind;
   let s = 0;
   if (vol_ratio >= 1.5) s += 40;
@@ -101,15 +116,19 @@ export function generateChecklist(ind, scores) {
     label: `RSI ${ind.rsi?.toFixed(0)} — ${rsiZone} zone`,
     status: rsiZone === "bullish" ? "CONFIRMED" : rsiZone === "neutral" ? "ALERT" : "BEARISH",
   });
-  const volStatus = ind.vol_ratio >= 1.5 ? "CONFIRMED" : ind.vol_ratio >= 1.0 ? "CONFIRMED" : ind.vol_ratio >= 0.5 ? "ALERT" : "ALERT";
-  list.push({
-    label: `Volume ${ind.vol_ratio >= 1.0 ? "strong" : "thin"} (${ind.vol_ratio?.toFixed(1)}× avg) — ${ind.vol_ratio >= 1.0 ? "high" : "low"} conviction`,
-    status: volStatus,
-  });
-  list.push({
-    label: `OBV ${ind.obv > ind.obv_prev ? "rising" : "falling"} + CMF ${ind.cmf > 0 ? "positive" : "negative"}`,
-    status: ind.obv > ind.obv_prev && ind.cmf > 0 ? "CONFIRMED" : "ALERT",
-  });
+  if (!isVolUnreliable(ind)) {
+    const volStatus = ind.vol_ratio >= 1.5 ? "CONFIRMED" : ind.vol_ratio >= 1.0 ? "CONFIRMED" : ind.vol_ratio >= 0.5 ? "ALERT" : "ALERT";
+    list.push({
+      label: `Volume ${ind.vol_ratio >= 1.0 ? "strong" : "thin"} (${ind.vol_ratio?.toFixed(1)}× avg) — ${ind.vol_ratio >= 1.0 ? "high" : "low"} conviction`,
+      status: volStatus,
+    });
+    list.push({
+      label: `OBV ${ind.obv > ind.obv_prev ? "rising" : "falling"} + CMF ${ind.cmf > 0 ? "positive" : "negative"}`,
+      status: ind.obv > ind.obv_prev && ind.cmf > 0 ? "CONFIRMED" : "ALERT",
+    });
+  } else {
+    list.push({ label: "Volume data unavailable (source feed issue)", status: "ALERT" });
+  }
 
   // ── High-value pro-trader confirmations ──
   // 52-week high proximity — Minervini's "within 25% of 52w high" rule
@@ -166,7 +185,7 @@ export function generateChecklist(ind, scores) {
   }
 
   // Volume participation trend (20d vs 50d avg)
-  if (ind.vol_trend_pct != null) {
+  if (ind.vol_trend_pct != null && !isVolUnreliable(ind)) {
     const v = ind.vol_trend_pct;
     list.push({
       label: `Participation: 20d vol ${v >= 0 ? "+" : ""}${v.toFixed(0)}% vs 50d avg`,
@@ -193,7 +212,7 @@ export function generateChecklist(ind, scores) {
   }
 
   // Volume-thrust on breakout (Minervini: low-vol breakouts fail 60%+)
-  if (ind.vol_thrust_pct != null) {
+  if (ind.vol_thrust_pct != null && !isVolUnreliable(ind)) {
     const vt = ind.vol_thrust_pct;
     list.push({
       label: `Breakout volume thrust: +${vt.toFixed(0)}% vs 20d avg`,
@@ -260,7 +279,7 @@ export function generateWarnings(ind) {
       description: "Squeeze just released — directional move underway. High-probability entry window.",
     });
   }
-  if (ind.vol_ratio < 0.5 && ind.close > ind.ema21) {
+  if (!isVolUnreliable(ind) && ind.vol_ratio < 0.5 && ind.close > ind.ema21) {
     w.push({
       pattern: "VOLUME DRY-UP",
       badge: "ALERT",
@@ -307,8 +326,8 @@ export function computeSignal({ symbol, timeframe, indicator }) {
   }
   // Fresh breakout bonus
   if (indicator.breakout_20d) bonus += 3;
-  // Volume thrust on breakout (only if broke 5-bar high)
-  if (indicator.vol_thrust_pct != null) {
+  // Volume thrust on breakout (only if broke 5-bar high) — skip if vol is unreliable
+  if (indicator.vol_thrust_pct != null && !isVolUnreliable(indicator)) {
     if (indicator.vol_thrust_pct >= 40) bonus += 3;
     else if (indicator.vol_thrust_pct < 0) bonus -= 2;   // breakout on declining volume
   }
@@ -367,7 +386,8 @@ export function computeSignal({ symbol, timeframe, indicator }) {
     target: noSetup ? null : { value: `$${trade.target}`, sub: `${((trade.target / trade.entry - 1) * 100).toFixed(1)}%` },
     riskReward: noSetup ? "N/A" : `${trade.riskReward}:1`,
     adx: indicator.adx ? Math.round(indicator.adx) : null,
-    volRatio: indicator.vol_ratio ? `${indicator.vol_ratio.toFixed(1)}×` : null,
+    volRatio: isVolUnreliable(indicator) ? null : (indicator.vol_ratio ? `${indicator.vol_ratio.toFixed(1)}×` : null),
+    volReliable: !isVolUnreliable(indicator),
     noSetup,
     checklist: generateChecklist(indicator, scores),
     earlyWarnings: generateWarnings(indicator),
