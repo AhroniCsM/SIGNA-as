@@ -13,6 +13,7 @@ import { sourceStatus, fetchCandles, fetchQuote } from "../sources/yahoo.js";
 import { fetchApeWisdomForWatchlist } from "../sources/apewisdom.js";
 import { summarizeStockTwits } from "../sources/stocktwits.js";
 import { getMarketRegime, applyRegimeToSignal } from "../engine/regime.js";
+import { fetchFundamentals } from "../sources/fundamentals.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -60,9 +61,11 @@ app.get("/api/signals", async (req, res) => {
   `).all(req.query.timeframe || null);
 
   const regime = await regimeOrNull();
-  const result = rows.map(r => {
+  // Fetch fundamentals for all symbols in parallel (cached 6h, so cheap on repeat)
+  const fundsList = await Promise.all(rows.map(r => fetchFundamentals(r.symbol).catch(() => null)));
+  const result = rows.map((r, i) => {
     const payload = JSON.parse(r.payload_json);
-    const enriched = { ...payload, version: r.version, data_delay_min: r.data_delay_min };
+    const enriched = { ...payload, version: r.version, data_delay_min: r.data_delay_min, fundamentals: fundsList[i] };
     return applyRegimeToSignal(enriched, regime);
   });
   // Re-sort after regime adjustment so top card reflects adjusted score
@@ -284,7 +287,11 @@ app.get("/api/scan/:symbol", async (req, res) => {
     sig.checklist.forEach((it, i) => insChecklistStmt.run(info.lastInsertRowid, i, it.label, it.status));
     sig.earlyWarnings.forEach(w => insWarningStmt.run(info.lastInsertRowid, w.pattern, w.badge, w.description));
 
-    const payload = { ...sig, version: ver, data_delay_min: delayMin };
+    // Attach fundamentals (analyst consensus, earnings date, logo) — non-blocking;
+    // if Yahoo is down we still return the signal without them.
+    let fundamentals = null;
+    try { fundamentals = await fetchFundamentals(symbol); } catch {}
+    const payload = { ...sig, version: ver, data_delay_min: delayMin, fundamentals };
     scanCache.set(symbol, { ts: Date.now(), payload });
     const regime = await regimeOrNull();
     res.json({ ...applyRegimeToSignal(payload, regime), cached: false });

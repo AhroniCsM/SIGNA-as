@@ -387,6 +387,52 @@ function SignalCard({signal:sig,gaugeId="m",size="M",onResize}){
         </div>
       </div>;
     })()}
+
+    {/* ── Real fundamentals (Yahoo quoteSummary, 6h cache) ──────────────── */}
+    {sig.fundamentals&&(()=>{
+      const f=sig.fundamentals;
+      const a=f.analyst||{};
+      const e=f.earnings||{};
+      const hasAnalyst=a.targetMean&&a.analystCount;
+      const hasEarn=e.daysUntil!==null&&e.daysUntil!==undefined;
+      if(!hasAnalyst&&!hasEarn&&!f.logo)return null;
+      const entryPrice=parseFloat((sig.entry?.value||"0").replace(/[$,]/g,""))||null;
+      const upside=hasAnalyst&&entryPrice?((a.targetMean-entryPrice)/entryPrice*100):null;
+      const recCol=a.recommendationMean<=2?C.green:a.recommendationMean<=3?C.amber:C.red;
+      const earnCol=e.daysUntil<=3?C.red:e.daysUntil<=7?C.amber:C.textSecondary;
+      return <div style={{background:"#0d1321",border:`1px solid ${C.cardBorder}`,borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:11}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,gap:8,flexWrap:"wrap"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {f.logo&&<img src={f.logo} alt="" style={{width:20,height:20,borderRadius:4,background:"#fff"}} onError={e=>e.target.style.display="none"}/>}
+            <span style={{fontSize:10,fontWeight:700,color:C.textSecondary,letterSpacing:1,textTransform:"uppercase"}}>Fundamentals · live</span>
+          </div>
+          {hasEarn&&<span style={{fontSize:10,fontWeight:700,color:earnCol,background:`${earnCol}18`,border:`1px solid ${earnCol}55`,padding:"2px 8px",borderRadius:10}}>
+            {e.daysUntil===0?"EARNINGS TODAY":e.daysUntil<0?`Earn ${-e.daysUntil}d ago`:`Earn in ${e.daysUntil}d`}{e.nextDateLabel&&` · ${e.nextDateLabel}`}
+          </span>}
+        </div>
+        {hasAnalyst&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+          <div>
+            <div style={{fontSize:9,color:C.textMuted,textTransform:"uppercase",letterSpacing:.5}}>Analyst Target</div>
+            <div style={{fontSize:14,fontWeight:700,color:C.green}}>${a.targetMean?.toFixed(2)}</div>
+            {upside!==null&&<div style={{fontSize:10,color:upside>=0?C.green:C.red}}>{upside>=0?"+":""}{upside.toFixed(1)}% vs entry</div>}
+          </div>
+          <div>
+            <div style={{fontSize:9,color:C.textMuted,textTransform:"uppercase",letterSpacing:.5}}>Range</div>
+            <div style={{fontSize:12,fontWeight:600,color:C.textPrimary}}>${a.targetLow?.toFixed(0)} – ${a.targetHigh?.toFixed(0)}</div>
+            <div style={{fontSize:10,color:C.textMuted}}>{a.analystCount} analysts</div>
+          </div>
+          <div>
+            <div style={{fontSize:9,color:C.textMuted,textTransform:"uppercase",letterSpacing:.5}}>Recommend</div>
+            <div style={{fontSize:12,fontWeight:700,color:recCol,textTransform:"uppercase"}}>{a.recommendationKey||"—"}</div>
+            <div style={{fontSize:10,color:C.textMuted}}>mean {a.recommendationMean?.toFixed(1)}/5</div>
+          </div>
+        </div>}
+        {(e.epsGrowth!==null||e.revenueGrowth!==null)&&<div style={{display:"flex",gap:12,marginTop:8,paddingTop:8,borderTop:`1px solid ${C.cardBorder}`,fontSize:10,color:C.textSecondary}}>
+          {e.epsGrowth!==null&&<span>EPS growth (q/q): <span style={{color:e.epsGrowth>=0.25?C.green:e.epsGrowth>=0?C.amber:C.red,fontWeight:700}}>{(e.epsGrowth*100).toFixed(1)}%</span></span>}
+          {e.revenueGrowth!==null&&<span>Revenue growth: <span style={{color:e.revenueGrowth>=0.25?C.green:e.revenueGrowth>=0?C.amber:C.red,fontWeight:700}}>{(e.revenueGrowth*100).toFixed(1)}%</span></span>}
+        </div>}
+      </div>;
+    })()}
     {sig.entry&&<div style={{display:"flex",gap:8,marginBottom:8}}><TradeParam label="Entry" value={sig.entry.value} sub={sig.entry.sub} colour={C.green} icon={Target} rawValue={sig.entry.value}/><TradeParam label="Stop" value={sig.stop.value} sub={sig.stop.sub} colour={C.red} icon={Shield} rawValue={sig.stop.value}/></div>}
     {sig.target&&<div style={{display:"flex",gap:8,marginBottom:4}}><TradeParam label="Target" value={sig.target.value} sub={sig.target.sub} colour={C.amber} icon={TrendingUp} rawValue={sig.target.value}/></div>}
     {en&&sn&&<PositionSizer entry={en} stopLoss={sn} target={pp(sig.target?.value)} grade={sig.grade} noSetup={sig.noSetup}/>}
@@ -831,10 +877,6 @@ function App(){
                     </>
                   })()}
 
-                  {/* Quick action hint */}
-                  <div style={{marginTop:16,padding:"10px 12px",borderRadius:8,background:`${C.cyan}08`,border:`1px solid ${C.cyan}22`,fontSize:11,color:C.textSecondary}}>
-                    <span style={{fontWeight:600,color:C.cyan}}>Tip:</span> Click any Entry, Stop, or Target box to copy the value to your clipboard. Use the Position Sizer on the card to calculate exact share quantity.
-                  </div>
                 </div>
               </div>
             </div>

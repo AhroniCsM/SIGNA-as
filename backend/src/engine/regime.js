@@ -237,17 +237,14 @@ const GRADES = ["A", "B", "C", "D", "F"];
 // Single, explicit recommendation derived from the already-computed signal
 // fields. This is deterministic — no new math, just a decision table.
 //
-//   BUY       — grade A, RR>=2, regime not DOWNTREND
-//   BUY_SMALL — grade B, RR>=1.5, regime not DOWNTREND (or grade A under pressure)
+//   BUY       — grade A, RR>=2, regime not DOWNTREND, no earnings blackout
+//   BUY_SMALL — grade B, RR>=1.5, regime not DOWNTREND
 //   WATCH     — grade C with RR>=2, or grade B with weak RR
-//   WAIT      — no_setup=true (ADX<15) — trend too weak to fade or trade
+//   WAIT      — no_setup=true (ADX<15), OR earnings within 3 days
 //   AVOID     — grade D/F, or DOWNTREND regime with grade<A
 //
-// NOTE: volume (vol_ratio) is intentionally EXCLUDED from this decision.
-// Our free-tier data sources (Massive/TwelveData/Stooq) return unreliable
-// volume on partial/recent sessions — zero-volume bars, pre-settle counts,
-// no-volume for ETFs, etc. Until we have a time-of-day-weighted ratio from
-// a reliable source, volume stays out of the verdict.
+// Volume (vol_ratio) is intentionally EXCLUDED — our free feeds return
+// unreliable volume on partial sessions.
 function verdictFor(sig, regime) {
   const grade = sig.rawGrade || sig.grade;   // use pre-regime grade for base logic
   const rr = typeof sig.riskReward === "number" ? sig.riskReward
@@ -259,7 +256,14 @@ function verdictFor(sig, regime) {
   const reasons = [];
   let verdict = "WATCH";
 
-  if (sig.noSetup) {
+  // Earnings blackout takes priority — binary-outcome risk, not a trend trade
+  const daysToEarn = sig.fundamentals?.earnings?.daysUntil;
+  const earningsBlackout = typeof daysToEarn === "number" && daysToEarn >= 0 && daysToEarn <= 3;
+
+  if (earningsBlackout) {
+    verdict = "WAIT";
+    reasons.push(`Earnings in ${daysToEarn}d — wait for report`);
+  } else if (sig.noSetup) {
     verdict = "WAIT";
     reasons.push("No setup — trend too weak (ADX low)");
   } else if (grade === "D" || grade === "F") {
