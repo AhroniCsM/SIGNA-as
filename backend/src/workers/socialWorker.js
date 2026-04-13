@@ -44,10 +44,15 @@ async function scan() {
   const all = [...reddit, ...stocktwits];
   console.log(`[social] collected ${reddit.length} reddit + ${stocktwits.length} stocktwits = ${all.length} mentions`);
 
-  const tx = db.transaction(rows => {
-    for (const r of rows) insMention.run(r.symbol, r.source, r.ts, r.sentiment, r.raw_text, r.url);
-  });
-  tx(all);
+  // node:sqlite DatabaseSync has no .transaction() helper — use explicit BEGIN/COMMIT.
+  db.exec("BEGIN");
+  try {
+    for (const r of all) insMention.run(r.symbol, r.source, r.ts, r.sentiment, r.raw_text, r.url);
+    db.exec("COMMIT");
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
 
   for (const sym of WATCHLIST) {
     const a = aggregate(sym, 60);
