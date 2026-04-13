@@ -344,7 +344,10 @@ const SIGNAL_EXTRAS={
 const SIZE_MAP={S:{w:320,cols:1,span:2},M:{w:440,cols:1,span:2},L:{w:640,cols:2,span:3},XL:{w:960,cols:2,span:6}};
 function SignalCard({signal:sig,gaugeId="m",size="M",onResize}){
   const gc=gradeAccent(sig.grade),pp=v=>v?parseFloat(v.replace(/[$,]/g,"")):null,en=pp(sig.entry?.value),sn=pp(sig.stop?.value);
-  const xt=SIGNAL_EXTRAS[sig.symbol];
+  // SIGNAL_EXTRAS is hardcoded demo data (fake analyst consensus, fake cup-and-handle
+  // patterns, fake sector alignment, stale MA150). Disabled to stop lying on live cards.
+  // TODO: repopulate from real providers (yfinance analyst targets, pattern detection).
+  const xt=null;
   const sz=SIZE_MAP[size]||SIZE_MAP.M;
   const nextSize={S:"M",M:"L",L:"XL",XL:"S"}[size];
   return<div className="signa-card" style={{gridColumn:`span ${sz.span}`,width:"100%",maxWidth:sz.w,background:C.card,border:`1px solid ${gc}22`,borderRadius:16,padding:"0 20px 24px",boxShadow:`0 4px 24px rgba(0,0,0,.4),0 0 40px ${gc}08`,transition:"border-color .4s,box-shadow .4s,max-width .3s",animation:"fadeIn .4s ease both"}}>
