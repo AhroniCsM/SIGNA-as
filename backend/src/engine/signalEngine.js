@@ -346,7 +346,11 @@ export function computeSignal({ symbol, timeframe, indicator }) {
   const composite = Math.max(0, Math.min(100, base + bonusClamped));
   const tier = gradeForScore(composite);
   const trade = calcTradeParams(indicator);
-  const noSetup = tier.grade === "D" || indicator.vol_ratio < 0.3 || (indicator.adx != null && indicator.adx < 15);
+  // noSetup = trend/structure too weak to act on. Volume intentionally excluded —
+  // free-tier feeds (Massive/TwelveData/Stooq) return unreliable vol on partial or
+  // recent sessions (zero-volume bars, pre-settle counts). Vetoing an A-grade signal
+  // on vol_ratio 0.0× was producing false WAITs.
+  const noSetup = tier.grade === "D" || (indicator.adx != null && indicator.adx < 15);
 
   return {
     symbol,
