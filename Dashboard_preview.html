@@ -14,6 +14,30 @@
   @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
   input:focus{border-color:#18ffff!important;outline:none}
   ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#0a0e17}::-webkit-scrollbar-thumb{background:#1a2236;border-radius:2px}
+
+  /* ── Mobile / tablet responsive overrides ─────────────────────────── */
+  /* Tablet & below: collapse sidebar below cards, shrink grid to 2-3 cols */
+  @media (max-width: 1100px){
+    .signa-root{padding:16px!important}
+    .signa-main{flex-direction:column!important;gap:16px!important}
+    .signa-sidebar{width:100%!important;max-width:none!important}
+    .signa-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:14px!important}
+    .signa-card{grid-column:span 1!important;max-width:none!important}
+    .signa-card-inner{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  }
+  /* Phone: single-column everywhere, tighter padding, wrap top bar */
+  @media (max-width: 680px){
+    .signa-root{padding:10px!important}
+    .signa-topbar{flex-direction:column!important;align-items:flex-start!important;gap:10px!important}
+    .signa-topbar-right{flex-wrap:wrap!important;gap:8px!important;width:100%!important}
+    .signa-search{flex:1 1 100%!important}
+    .signa-search input{width:100%!important;flex:1!important;min-width:0!important}
+    .signa-grid{grid-template-columns:1fr!important;gap:12px!important}
+    .signa-card-inner{grid-template-columns:1fr!important}
+    .signa-focus-row{flex-direction:column!important}
+    /* Hide card resize controls on phones — the gesture is desktop-only */
+    .signa-card-resize{display:none!important}
+  }
 </style>
 </head>
 <body>
@@ -323,7 +347,7 @@ function SignalCard({signal:sig,gaugeId="m",size="M",onResize}){
   const xt=SIGNAL_EXTRAS[sig.symbol];
   const sz=SIZE_MAP[size]||SIZE_MAP.M;
   const nextSize={S:"M",M:"L",L:"XL",XL:"S"}[size];
-  return<div style={{gridColumn:`span ${sz.span}`,width:"100%",maxWidth:sz.w,background:C.card,border:`1px solid ${gc}22`,borderRadius:16,padding:"0 20px 24px",boxShadow:`0 4px 24px rgba(0,0,0,.4),0 0 40px ${gc}08`,transition:"border-color .4s,box-shadow .4s,max-width .3s",animation:"fadeIn .4s ease both"}}>
+  return<div className="signa-card" style={{gridColumn:`span ${sz.span}`,width:"100%",maxWidth:sz.w,background:C.card,border:`1px solid ${gc}22`,borderRadius:16,padding:"0 20px 24px",boxShadow:`0 4px 24px rgba(0,0,0,.4),0 0 40px ${gc}08`,transition:"border-color .4s,box-shadow .4s,max-width .3s",animation:"fadeIn .4s ease both"}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0 6px",borderBottom:`1px solid ${C.cardBorder}`,marginBottom:8}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:14,fontWeight:700,color:C.green,letterSpacing:1}}>SIGNA</span><span style={{fontSize:10,color:C.textMuted}}>SIGNAL</span></div><div style={{display:"flex",alignItems:"center",gap:10,fontSize:11,color:C.textSecondary}}><span style={{fontWeight:600}}>{sig.symbol}</span><span>·</span><span>{sig.timeframe}</span><span>·</span><span style={{color:C.textMuted}}>v{sig.version}</span>{sig.dataDelay&&<Clock size={11} color={C.red}/>}{onResize&&<button onClick={()=>onResize(nextSize)} title={`Resize (current: ${size}) → ${nextSize}`} style={{marginLeft:4,background:"#0a0e17",border:`1px solid ${C.cardBorder}`,borderRadius:5,color:C.cyan,fontSize:9,fontWeight:700,padding:"2px 7px",cursor:"pointer",letterSpacing:.5}}>⇱ {size}</button>}</div></div>
     {sig.dataDelay&&<div style={{display:"flex",alignItems:"center",gap:6,background:"#ff444418",border:"1px solid #ff444433",borderRadius:8,padding:"6px 12px",marginBottom:10}}><Clock size={13} color={C.red}/><span style={{fontSize:11,color:C.red,fontWeight:600}}>Delayed Signal — data is {sig.dataDelay}m behind real-time</span></div>}
     {sig.regimeDemotion>0&&<div style={{display:"flex",alignItems:"center",gap:8,background:`${C.amber}12`,border:`1px solid ${C.amber}44`,borderRadius:8,padding:"6px 12px",marginBottom:10}}><AlertTriangle size={13} color={C.amber}/><span style={{fontSize:11,color:C.amber,fontWeight:600}}>Macro regime: demoted {sig.regimeDemotion} grade{sig.regimeDemotion>1?"s":""} (raw grade was <b>{sig.rawGrade}</b>) — {sig.regime==="DOWNTREND"?"broad market in downtrend":"market under pressure"}</span></div>}
@@ -341,7 +365,7 @@ function SignalCard({signal:sig,gaugeId="m",size="M",onResize}){
     {xt&&<AnalystChartPanel analystConsensus={xt.analystConsensus} chartPattern={xt.chartPattern}/>}
     <LowRR rr={sig.riskReward}/>
     <SH>Signal Checklist</SH>
-    <div style={{display:"grid",gridTemplateColumns:`repeat(${sz.cols},1fr)`,columnGap:16}}>
+    <div className="signa-card-inner" style={{display:"grid",gridTemplateColumns:`repeat(${sz.cols},1fr)`,columnGap:16}}>
       {sig.checklist.map((it,i)=><ChecklistItem key={i} label={it.label} status={it.status}/>)}
     </div>
     {sig.earlyWarnings?.length>0&&<><SH trailing="leading indicators">Early Warnings</SH>{sig.earlyWarnings.map((w,i)=><EarlyWarning key={i} pattern={w.pattern} badge={w.badge} description={w.description}/>)}</>}
@@ -429,7 +453,7 @@ function MomentumSidebar({tickers,active,onClickTicker}){
     return c;
   },[tickers]);
 
-  return<div style={{width:340,background:C.card,border:`1px solid ${C.cardBorder}`,borderRadius:16,overflow:"hidden",display:"flex",flexDirection:"column",flexShrink:0}}>
+  return<div className="signa-sidebar" style={{width:340,background:C.card,border:`1px solid ${C.cardBorder}`,borderRadius:16,overflow:"hidden",display:"flex",flexDirection:"column",flexShrink:0}}>
     <div style={{padding:"14px 16px 10px",borderBottom:`1px solid ${C.cardBorder}`}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -652,16 +676,16 @@ function App(){
 
   const focusSignal=focusTicker?SIGNALS[focusTicker]:null;
 
-  return<div style={{minHeight:"100vh",background:C.bg,padding:24}}>
+  return<div className="signa-root" style={{minHeight:"100vh",background:C.bg,padding:24}}>
     {/* Top bar */}
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24,paddingBottom:16,borderBottom:`1px solid ${C.cardBorder}`}}>
+    <div className="signa-topbar" style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24,paddingBottom:16,borderBottom:`1px solid ${C.cardBorder}`}}>
       <div style={{display:"flex",alignItems:"baseline",gap:10}}>
         <span style={{fontSize:22,fontWeight:800,color:C.green,letterSpacing:2}}>SIGNA</span>
         <span style={{fontSize:12,color:C.textMuted,fontWeight:500}}>Signal Dashboard v3</span>
       </div>
-      <div style={{display:"flex",alignItems:"center",gap:16,fontSize:11,color:C.textSecondary}}>
+      <div className="signa-topbar-right" style={{display:"flex",alignItems:"center",gap:16,fontSize:11,color:C.textSecondary,flexWrap:"wrap"}}>
         {/* Search any ticker (on-demand scan) */}
-        <form onSubmit={e=>{e.preventDefault();runSearch(searchQ);}} style={{display:"flex",alignItems:"center",gap:6}}>
+        <form className="signa-search" onSubmit={e=>{e.preventDefault();runSearch(searchQ);}} style={{display:"flex",alignItems:"center",gap:6}}>
           <input value={searchQ} onChange={e=>{setSearchQ(e.target.value);if(searchState==="error")setSearchState("idle");}}
             placeholder="Search any ticker (e.g. NFLX)"
             style={{background:C.card,border:`1px solid ${searchState==="error"?C.amber:C.cardBorder}`,borderRadius:8,padding:"5px 10px",fontSize:11,color:C.textPrimary,width:200,outline:"none"}}/>
@@ -713,7 +737,7 @@ function App(){
     })()}
 
     {/* Main layout */}
-    <div style={{display:"flex",gap:20,alignItems:"flex-start"}}>
+    <div className="signa-main" style={{display:"flex",gap:20,alignItems:"flex-start"}}>
 
       {/* LEFT: cards area */}
       <div style={{flex:1}}>
@@ -784,7 +808,7 @@ function App(){
 
         {/* Grid view: all signal cards, each independently resizable S/M/L/XL */}
         {view==="grid"&&(
-          <div style={{display:"grid",gridTemplateColumns:"repeat(6,minmax(0,1fr))",gap:20,alignItems:"start"}}>
+          <div className="signa-grid" style={{display:"grid",gridTemplateColumns:"repeat(6,minmax(0,1fr))",gap:20,alignItems:"start"}}>
             {Object.values(SIGNALS).map((sig,i)=>(
               <SignalCard key={sig.symbol+sig.timeframe} signal={sig} gaugeId={`g${i}`} size={cardSizes[sig.symbol]||"M"} onResize={sz=>setCardSize(sig.symbol,sz)}/>
             ))}
