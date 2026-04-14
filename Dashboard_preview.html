@@ -383,7 +383,7 @@ function SignalCard({signal:sig,gaugeId="m",size="M",onResize}){
 
       // 1) Try native share (mobile — opens WhatsApp/Telegram/etc directly)
       if(navigator.canShare&&navigator.canShare({files:[file]})){
-        await navigator.share({files:[file],title:`SIGNA ${sig.symbol}`,text:`${sig.symbol} · ${sig.verdict||sig.grade} · Score ${sig.score}/100`});
+        await navigator.share({files:[file]});
         setSnapState("done");
         window.track&&window.track("signal_screenshot",{symbol:sig.symbol,method:"share"});
       }
