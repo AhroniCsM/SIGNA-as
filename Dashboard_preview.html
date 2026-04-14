@@ -631,6 +631,10 @@ function App(){
   const[scanned,setScanned]=useState({}); // symbol -> signal payload from /api/scan
   const[regime,setRegime]=useState(null); // market regime (macro gate)
   const[regimeOpen,setRegimeOpen]=useState(false);
+  const[watchlist,setWatchlist]=useState([]);
+  const[wlOpen,setWlOpen]=useState(false);
+  const[wlInput,setWlInput]=useState("");
+  const[wlBusy,setWlBusy]=useState(false);
 
   // Fetch regime every 5 min (server caches 30 min so most calls are instant)
   useEffect(()=>{
@@ -646,6 +650,33 @@ function App(){
     load();
     const id=setInterval(load,5*60*1000);
     return()=>{stopped=true;clearInterval(id);};
+  },[]);
+
+  // ── Watchlist from API ──
+  const fetchWatchlist=useCallback(async()=>{
+    try{const r=await fetch("/api/watchlist");if(r.ok)setWatchlist(await r.json());}catch{}
+  },[]);
+  useEffect(()=>{fetchWatchlist();},[fetchWatchlist]);
+
+  const addWatchlistSym=useCallback(async(sym)=>{
+    sym=(sym||"").toUpperCase().trim();
+    if(!sym||!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(sym))return;
+    if(watchlist.includes(sym))return; // already there
+    setWlBusy(true);
+    try{
+      const r=await fetch("/api/watchlist",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbol:sym})});
+      if(r.ok){const j=await r.json();setWatchlist(j.watchlist);setWlInput("");}
+      window.track&&window.track("watchlist_add",{symbol:sym});
+    }catch{}finally{setWlBusy(false);}
+  },[watchlist]);
+
+  const removeWatchlistSym=useCallback(async(sym)=>{
+    setWlBusy(true);
+    try{
+      const r=await fetch(`/api/watchlist/${encodeURIComponent(sym)}`,{method:"DELETE"});
+      if(r.ok){const j=await r.json();setWatchlist(j.watchlist);}
+      window.track&&window.track("watchlist_remove",{symbol:sym});
+    }catch{}finally{setWlBusy(false);}
   },[]);
 
   const runSearch=useCallback(async(raw)=>{
@@ -786,8 +817,38 @@ function App(){
           </button>
           {searchState==="error"&&<span style={{color:C.amber,fontSize:10,fontWeight:600,marginLeft:4}}>{searchErr}</span>}
         </form>
-        <span>{tickerList.length} active signals</span><span>·</span><span>{MOMENTUM_LIVE.length} tracked tickers</span>
-        {apiStatus==="live"&&<span style={{display:"inline-flex",alignItems:"center",gap:4,background:`${C.green}18`,padding:"3px 10px",borderRadius:12,color:C.green,fontWeight:600}}><span style={{width:6,height:6,borderRadius:"50%",background:C.green,animation:"livePulse 2s infinite"}}/>LIVE API {lastUpdate&&`· ${lastUpdate.toLocaleTimeString()}`}</span>}
+        <span>{tickerList.length} active signals</span><span>·</span><span>{MOMENTUM_LIVE.length} tracked</span>
+        {/* Watchlist manage button */}
+        <div style={{position:"relative"}}>
+          <button onClick={()=>setWlOpen(o=>!o)} style={{background:wlOpen?C.cyan+"22":"transparent",border:`1px solid ${wlOpen?C.cyan:C.cardBorder}`,borderRadius:8,padding:"3px 10px",fontSize:11,fontWeight:600,color:wlOpen?C.cyan:C.textSecondary,cursor:"pointer",transition:"all .2s"}}>
+            WATCHLIST ({watchlist.length})
+          </button>
+          {wlOpen&&<div style={{position:"absolute",top:"calc(100% + 6px)",right:0,zIndex:100,width:320,background:C.card,border:`1px solid ${C.cardBorder}`,borderRadius:12,padding:14,boxShadow:"0 8px 32px rgba(0,0,0,.6)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+              <span style={{fontSize:11,fontWeight:700,color:C.textSecondary,letterSpacing:1,textTransform:"uppercase",flex:1}}>Manage Watchlist</span>
+              <button onClick={()=>setWlOpen(false)} style={{background:"transparent",border:"none",color:C.textMuted,fontSize:14,cursor:"pointer",padding:2}}>✕</button>
+            </div>
+            <form onSubmit={e=>{e.preventDefault();addWatchlistSym(wlInput);}} style={{display:"flex",gap:6,marginBottom:10}}>
+              <input value={wlInput} onChange={e=>setWlInput(e.target.value.toUpperCase())} placeholder="Add ticker (e.g. NFLX)" maxLength={10}
+                style={{flex:1,background:"#0a0e17",border:`1px solid ${C.cardBorder}`,borderRadius:6,padding:"5px 8px",fontSize:11,color:C.textPrimary,outline:"none"}}/>
+              <button type="submit" disabled={wlBusy||!wlInput.trim()}
+                style={{background:C.green,color:"#000",border:"none",borderRadius:6,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:wlBusy?"wait":"pointer",opacity:wlInput.trim()?1:.4}}>ADD</button>
+            </form>
+            <div style={{maxHeight:200,overflowY:"auto",display:"flex",flexWrap:"wrap",gap:6}}>
+              {watchlist.map(sym=>(
+                <div key={sym} style={{display:"inline-flex",alignItems:"center",gap:4,background:"#0a0e17",border:`1px solid ${C.cardBorder}`,borderRadius:6,padding:"4px 8px",fontSize:11,color:C.textPrimary,fontWeight:600}}>
+                  {sym}
+                  <button onClick={()=>removeWatchlistSym(sym)} title={`Remove ${sym}`}
+                    style={{background:"transparent",border:"none",color:C.red,fontSize:12,cursor:"pointer",padding:0,lineHeight:1,opacity:.6,transition:"opacity .15s"}}
+                    onMouseEnter={e=>e.target.style.opacity=1} onMouseLeave={e=>e.target.style.opacity=.6}>✕</button>
+                </div>
+              ))}
+              {!watchlist.length&&<span style={{fontSize:11,color:C.textMuted}}>Watchlist empty — add tickers above</span>}
+            </div>
+            <div style={{marginTop:10,fontSize:9,color:C.textMuted,lineHeight:1.4}}>Added tickers are scanned automatically every 5 min. Duplicates ignored. Remove a ticker to stop scanning it.</div>
+          </div>}
+        </div>
+        {apiStatus==="live"&&<span style={{display:"inline-flex",alignItems:"center",gap:4,background:`${C.green}18`,padding:"3px 10px",borderRadius:12,color:C.green,fontWeight:600}}><span style={{width:6,height:6,borderRadius:"50%",background:C.green,animation:"livePulse 2s infinite"}}/>LIVE{lastUpdate&&` · ${lastUpdate.toLocaleTimeString()}`}</span>}
         {apiStatus==="connecting"&&<span style={{display:"inline-flex",alignItems:"center",gap:4,background:`${C.cyan}18`,padding:"3px 10px",borderRadius:12,color:C.cyan,fontWeight:600}}>CONNECTING…</span>}
         {apiStatus==="offline"&&<span style={{display:"inline-flex",alignItems:"center",gap:4,background:`${C.amber}18`,padding:"3px 10px",borderRadius:12,color:C.amber,fontWeight:600}}>DEMO DATA (API offline)</span>}
       </div>

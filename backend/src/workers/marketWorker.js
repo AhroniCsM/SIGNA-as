@@ -3,16 +3,15 @@
 
 import "dotenv/config";
 import cron from "node-cron";
-import { openDb, initSchema, upsertTicker } from "../db/schema.js";
+import { openDb, initSchema, upsertTicker, getWatchlist, seedWatchlist } from "../db/schema.js";
 import { fetchCandles, fetchQuote, fetchSectorForSymbol } from "../sources/yahoo.js";
 import { computeAll } from "../engine/indicators.js";
 import { computeSignal } from "../engine/signalEngine.js";
-
-const WATCHLIST = (process.env.WATCHLIST || "AAPL,NVDA,TSLA").split(",").map(s => s.trim().toUpperCase());
 const TIMEFRAME = "1D";
 
 const db = openDb();
 initSchema(db);
+seedWatchlist(db);
 
 // ── persistence ──────────────────────────────────────────────
 const insIndicator = db.prepare(`
@@ -76,6 +75,8 @@ async function scanSymbol(symbol) {
 }
 
 async function scanAll() {
+  // Read watchlist from DB each cycle — picks up UI additions without restart
+  const WATCHLIST = getWatchlist(db);
   console.log(`[market] scan @ ${new Date().toISOString()} — ${WATCHLIST.length} symbols`);
   for (const sym of WATCHLIST) {
     await scanSymbol(sym);

@@ -2,15 +2,14 @@
 
 import "dotenv/config";
 import cron from "node-cron";
-import { openDb, initSchema } from "../db/schema.js";
+import { openDb, initSchema, getWatchlist, seedWatchlist } from "../db/schema.js";
 import { scanReddit } from "../sources/reddit.js";
 import { scanStockTwits } from "../sources/stocktwits.js";
-
-const WATCHLIST = (process.env.WATCHLIST || "AAPL,NVDA,TSLA").split(",").map(s => s.trim().toUpperCase());
 const SUBS = (process.env.REDDIT_SUBS || "wallstreetbets,stocks").split(",").map(s => s.trim());
 
 const db = openDb();
 initSchema(db);
+seedWatchlist(db);
 
 const insMention = db.prepare(`
   INSERT INTO social_mentions(symbol,source,ts,sentiment,raw_text,url)
@@ -38,7 +37,8 @@ function aggregate(symbol, windowMin = 60) {
 }
 
 async function scan() {
-  console.log(`[social] scan @ ${new Date().toISOString()}`);
+  const WATCHLIST = getWatchlist(db);
+  console.log(`[social] scan @ ${new Date().toISOString()} — ${WATCHLIST.length} symbols`);
   const reddit = await scanReddit(SUBS, WATCHLIST);
   const stocktwits = await scanStockTwits(WATCHLIST);
   const all = [...reddit, ...stocktwits];

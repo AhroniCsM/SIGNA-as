@@ -107,7 +107,36 @@ export function initSchema(db) {
       avg_sentiment REAL,
       PRIMARY KEY(symbol,window_min,ts)
     );
+
+    CREATE TABLE IF NOT EXISTS watchlist (
+      symbol TEXT PRIMARY KEY,
+      added_at INTEGER DEFAULT (strftime('%s','now'))
+    );
   `);
+}
+
+// ── Watchlist helpers (shared across API + workers) ─────────────────
+
+export function getWatchlist(db) {
+  return db.prepare("SELECT symbol FROM watchlist ORDER BY added_at").all().map(r => r.symbol);
+}
+
+export function addToWatchlist(db, symbol) {
+  db.prepare("INSERT OR IGNORE INTO watchlist(symbol) VALUES(?)").run(symbol.toUpperCase().trim());
+}
+
+export function removeFromWatchlist(db, symbol) {
+  db.prepare("DELETE FROM watchlist WHERE symbol=?").run(symbol.toUpperCase().trim());
+}
+
+// Seed from env var if the table is empty (first boot)
+export function seedWatchlist(db) {
+  const count = db.prepare("SELECT COUNT(*) AS n FROM watchlist").get().n;
+  if (count > 0) return;   // already seeded
+  const envList = (process.env.WATCHLIST || "AAPL,NVDA,TSLA,AMD,SOFI,AMZN,GME,MSFT,META,GOOGL")
+    .split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
+  const ins = db.prepare("INSERT OR IGNORE INTO watchlist(symbol) VALUES(?)");
+  for (const sym of envList) ins.run(sym);
 }
 
 export function upsertTicker(db, symbol, name = null, sector = null) {

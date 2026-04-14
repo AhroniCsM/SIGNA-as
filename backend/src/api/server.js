@@ -6,7 +6,7 @@ import cors from "cors";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { openDb, initSchema, upsertTicker } from "../db/schema.js";
+import { openDb, initSchema, upsertTicker, getWatchlist, addToWatchlist, removeFromWatchlist, seedWatchlist } from "../db/schema.js";
 import { calcPositionSize, computeSignal } from "../engine/signalEngine.js";
 import { computeAll } from "../engine/indicators.js";
 import { sourceStatus, fetchCandles, fetchQuote } from "../sources/yahoo.js";
@@ -19,6 +19,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const db = openDb();
 initSchema(db);
+seedWatchlist(db);
 
 const app = express();
 app.use(cors());
@@ -45,6 +46,27 @@ async function regimeOrNull() {
     return await getMarketRegime();
   } catch { return null; }
 }
+
+// ── Watchlist CRUD ──────────────────────────────────────────────────
+app.get("/api/watchlist", (_req, res) => {
+  res.json(getWatchlist(db));
+});
+
+app.post("/api/watchlist", (req, res) => {
+  const sym = (req.body.symbol || "").toUpperCase().trim();
+  if (!sym || !/^[A-Z][A-Z0-9.\-]{0,9}$/.test(sym)) {
+    return res.status(400).json({ error: "invalid_symbol" });
+  }
+  // Ignore duplicates silently (INSERT OR IGNORE)
+  addToWatchlist(db, sym);
+  res.json({ ok: true, symbol: sym, watchlist: getWatchlist(db) });
+});
+
+app.delete("/api/watchlist/:symbol", (req, res) => {
+  const sym = req.params.symbol.toUpperCase().trim();
+  removeFromWatchlist(db, sym);
+  res.json({ ok: true, removed: sym, watchlist: getWatchlist(db) });
+});
 
 // ── Latest signal per symbol (all watchlist), regime-adjusted
 app.get("/api/signals", async (req, res) => {
@@ -100,8 +122,8 @@ app.get("/api/signals/:symbol/history", (req, res) => {
 // Cached 2 minutes to stay well under their rate limit.
 let momentumCache = { ts: 0, data: [] };
 app.get("/api/momentum", async (req, res) => {
-  const watchlist = (process.env.WATCHLIST || "AAPL,NVDA,TSLA,AMD,SOFI,AMZN,GME,MSFT,META,GOOGL")
-    .split(",").map(s => s.trim().toUpperCase());
+  const watchlist = getWatchlist(db);
+  if (!watchlist.length) return res.json({ source: "apewisdom", tickers: [] });
   const ageMs = Date.now() - momentumCache.ts;
   if (ageMs < 120_000 && momentumCache.data.length) {
     return res.json({ source: "apewisdom", cachedAgeSec: Math.round(ageMs/1000), tickers: momentumCache.data });
