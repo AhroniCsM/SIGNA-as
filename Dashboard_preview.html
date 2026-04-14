@@ -56,6 +56,7 @@ window.track=(ev,props)=>{try{window.posthog&&posthog.capture(ev,props||{})}catc
 </head>
 <body>
 <div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
@@ -358,14 +359,38 @@ const SIGNAL_EXTRAS={
 const SIZE_MAP={S:{w:320,cols:1,span:2},M:{w:440,cols:1,span:2},L:{w:640,cols:2,span:3},XL:{w:960,cols:2,span:6}};
 function SignalCard({signal:sig,gaugeId="m",size="M",onResize}){
   const gc=gradeAccent(sig.grade),pp=v=>v?parseFloat(v.replace(/[$,]/g,"")):null,en=pp(sig.entry?.value),sn=pp(sig.stop?.value);
-  // SIGNAL_EXTRAS is hardcoded demo data (fake analyst consensus, fake cup-and-handle
-  // patterns, fake sector alignment, stale MA150). Disabled to stop lying on live cards.
-  // TODO: repopulate from real providers (yfinance analyst targets, pattern detection).
   const xt=null;
   const sz=SIZE_MAP[size]||SIZE_MAP.M;
   const nextSize={S:"M",M:"L",L:"XL",XL:"S"}[size];
-  return<div className="signa-card" style={{gridColumn:`span ${sz.span}`,width:"100%",maxWidth:sz.w,background:C.card,border:`1px solid ${gc}22`,borderRadius:16,padding:"0 20px 24px",boxShadow:`0 4px 24px rgba(0,0,0,.4),0 0 40px ${gc}08`,transition:"border-color .4s,box-shadow .4s,max-width .3s",animation:"fadeIn .4s ease both"}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0 6px",borderBottom:`1px solid ${C.cardBorder}`,marginBottom:8}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:14,fontWeight:700,color:C.green,letterSpacing:1}}>SIGNA</span><span style={{fontSize:10,color:C.textMuted}}>SIGNAL</span></div><div style={{display:"flex",alignItems:"center",gap:10,fontSize:11,color:C.textSecondary}}><span style={{fontWeight:600}}>{sig.symbol}</span><span>·</span><span>{sig.timeframe}</span><span>·</span><span style={{color:C.textMuted}}>v{sig.version}</span>{sig.dataDelay&&<Clock size={11} color={C.red}/>}{onResize&&<button onClick={()=>onResize(nextSize)} title={`Resize (current: ${size}) → ${nextSize}`} style={{marginLeft:4,background:"#0a0e17",border:`1px solid ${C.cardBorder}`,borderRadius:5,color:C.cyan,fontSize:9,fontWeight:700,padding:"2px 7px",cursor:"pointer",letterSpacing:.5}}>⇱ {size}</button>}</div></div>
+  const cardRef=useRef(null);
+  const[snapState,setSnapState]=useState("idle"); // idle | capturing | done | fallback
+
+  const captureCard=useCallback(async()=>{
+    if(!cardRef.current||typeof html2canvas==="undefined")return;
+    setSnapState("capturing");
+    try{
+      const canvas=await html2canvas(cardRef.current,{backgroundColor:"#0a0e17",scale:2,useCORS:true,logging:false});
+      // Try clipboard first (works on desktop Chrome/Edge, Safari 15.4+)
+      try{
+        const blob=await new Promise(r=>canvas.toBlob(r,"image/png"));
+        await navigator.clipboard.write([new ClipboardItem({"image/png":blob})]);
+        setSnapState("done");
+        window.track&&window.track("signal_screenshot",{symbol:sig.symbol,method:"clipboard"});
+      }catch{
+        // Clipboard API blocked (mobile/Firefox) — download instead
+        const link=document.createElement("a");
+        link.download=`SIGNA_${sig.symbol}_${sig.timeframe}.png`;
+        link.href=canvas.toDataURL("image/png");
+        link.click();
+        setSnapState("fallback");
+        window.track&&window.track("signal_screenshot",{symbol:sig.symbol,method:"download"});
+      }
+    }catch(e){console.error("screenshot failed",e);setSnapState("idle");}
+    setTimeout(()=>setSnapState("idle"),2000);
+  },[sig.symbol,sig.timeframe]);
+
+  return<div ref={cardRef} className="signa-card" style={{gridColumn:`span ${sz.span}`,width:"100%",maxWidth:sz.w,background:C.card,border:`1px solid ${gc}22`,borderRadius:16,padding:"0 20px 24px",boxShadow:`0 4px 24px rgba(0,0,0,.4),0 0 40px ${gc}08`,transition:"border-color .4s,box-shadow .4s,max-width .3s",animation:"fadeIn .4s ease both"}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0 6px",borderBottom:`1px solid ${C.cardBorder}`,marginBottom:8}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:14,fontWeight:700,color:C.green,letterSpacing:1}}>SIGNA</span><span style={{fontSize:10,color:C.textMuted}}>SIGNAL</span></div><div style={{display:"flex",alignItems:"center",gap:10,fontSize:11,color:C.textSecondary}}><span style={{fontWeight:600}}>{sig.symbol}</span><span>·</span><span>{sig.timeframe}</span><span>·</span><span style={{color:C.textMuted}}>v{sig.version}</span>{sig.dataDelay&&<Clock size={11} color={C.red}/>}<button onClick={captureCard} title="Copy signal as image" style={{marginLeft:2,background:snapState==="done"?`${C.green}22`:snapState==="fallback"?`${C.cyan}22`:"#0a0e17",border:`1px solid ${snapState==="done"?C.green:snapState==="fallback"?C.cyan:C.cardBorder}`,borderRadius:5,color:snapState==="done"?C.green:snapState==="fallback"?C.cyan:snapState==="capturing"?C.amber:C.textSecondary,fontSize:9,fontWeight:700,padding:"2px 7px",cursor:snapState==="capturing"?"wait":"pointer",letterSpacing:.5,transition:"all .2s"}}>{snapState==="capturing"?"...":snapState==="done"?"Copied!":snapState==="fallback"?"Saved!":"Share"}</button>{onResize&&<button onClick={()=>onResize(nextSize)} title={`Resize (current: ${size}) → ${nextSize}`} style={{background:"#0a0e17",border:`1px solid ${C.cardBorder}`,borderRadius:5,color:C.cyan,fontSize:9,fontWeight:700,padding:"2px 7px",cursor:"pointer",letterSpacing:.5}}>⇱ {size}</button>}</div></div>
     {sig.dataDelay&&<div style={{display:"flex",alignItems:"center",gap:6,background:"#ff444418",border:"1px solid #ff444433",borderRadius:8,padding:"6px 12px",marginBottom:10}}><Clock size={13} color={C.red}/><span style={{fontSize:11,color:C.red,fontWeight:600}}>Delayed Signal — data is {sig.dataDelay}m behind real-time</span></div>}
     {sig.regimeDemotion>0&&<div style={{display:"flex",alignItems:"center",gap:8,background:`${C.amber}12`,border:`1px solid ${C.amber}44`,borderRadius:8,padding:"6px 12px",marginBottom:10}}><AlertTriangle size={13} color={C.amber}/><span style={{fontSize:11,color:C.amber,fontWeight:600}}>Macro regime: demoted {sig.regimeDemotion} grade{sig.regimeDemotion>1?"s":""} (raw grade was <b>{sig.rawGrade}</b>) — {sig.regime==="DOWNTREND"?"broad market in downtrend":"market under pressure"}</span></div>}
     <BullishGauge pct={sig.bullishPct} sentiment={sig.sentiment} id={gaugeId}/>
