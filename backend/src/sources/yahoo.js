@@ -90,7 +90,38 @@ export async function fetchCandles(symbol, timeframe = "1D", opts = {}) {
   const hasMassive = !!process.env.MASSIVE_API_KEY;
   const hasTwelve = !!(process.env.TWELVE_DATA_KEY || process.env.TWELVEDATA_KEY);
 
-  // 0) Massive.com — Polygon-compatible, no captcha, generous free tier. Primary for all callers.
+  // ── Search callers: TwelveData FIRST ──────────────────────────────
+  // TwelveData has its own quota (800/day, 8/min) separate from Massive's
+  // throttle queue. Trying it first means searches return in 1–2s instead
+  // of waiting behind the worker's Massive queue (which can be 30–90s deep).
+  const twelveSkipUntil = globalThis.__twelveQuotaExhaustedUntil || 0;
+  const twelveAvailable = timeframe === "1D" && hasTwelve && caller === "search" && Date.now() >= twelveSkipUntil;
+  if (twelveAvailable) {
+    try {
+      const candles = await fetchTwelveDaily(symbol);
+      const last = candles[candles.length - 1].close;
+      if (sanityOK(symbol, last)) {
+        sourceStatus[symbol] = { source: "twelvedata", latestClose: last, bars: candles.length, ts: Date.now() };
+        console.log(`[twelvedata] ${symbol} ← ${candles.length} bars, last=$${last.toFixed(2)}`);
+        return candles;
+      }
+      errors.push(`twelvedata: sanity fail $${last}`);
+    } catch (e) {
+      if (/out of api credits|credits were used/i.test(e.message)) {
+        const now = new Date();
+        const tomorrowUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 1);
+        globalThis.__twelveQuotaExhaustedUntil = tomorrowUTC;
+        console.warn(`[twelvedata] quota exhausted — skipping until ${new Date(tomorrowUTC).toISOString()}`);
+      }
+      errors.push(`twelvedata: ${e.message}`);
+    }
+  } else if (timeframe === "1D" && hasTwelve && caller !== "search") {
+    // Silently skipped for watchlist — expected behavior, not an error.
+  } else if (timeframe === "1D" && hasTwelve && Date.now() < twelveSkipUntil) {
+    errors.push(`twelvedata: skipped (quota exhausted until UTC midnight)`);
+  }
+
+  // ── Massive.com — primary for watchlist worker, fallback for search ──
   if (timeframe === "1D" && hasMassive) {
     try {
       const candles = await fetchMassiveDaily(symbol);
@@ -106,36 +137,6 @@ export async function fetchCandles(symbol, timeframe = "1D", opts = {}) {
         errors.push(`massive: only ${candles.length} bars`);
       }
     } catch (e) { errors.push(`massive: ${e.message}`); }
-  }
-
-  // 1) Twelve Data — reserved for /api/scan (search) only, to stretch the 800/day free quota.
-  // Watchlist worker (~10 symbols × every 5 min = 2,880/day) would exhaust it in hours otherwise.
-  const twelveSkipUntil = globalThis.__twelveQuotaExhaustedUntil || 0;
-  const twelveAvailable = timeframe === "1D" && hasTwelve && caller === "search" && Date.now() >= twelveSkipUntil;
-  if (twelveAvailable) {
-    try {
-      const candles = await fetchTwelveDaily(symbol);
-      const last = candles[candles.length - 1].close;
-      if (sanityOK(symbol, last)) {
-        sourceStatus[symbol] = { source: "twelvedata", latestClose: last, bars: candles.length, ts: Date.now() };
-        console.log(`[twelvedata] ${symbol} ← ${candles.length} bars, last=$${last.toFixed(2)}`);
-        return candles;
-      }
-      errors.push(`twelvedata: sanity fail $${last}`);
-    } catch (e) {
-      // If quota exhausted, skip TwelveData until next UTC midnight
-      if (/out of api credits|credits were used/i.test(e.message)) {
-        const now = new Date();
-        const tomorrowUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 1);
-        globalThis.__twelveQuotaExhaustedUntil = tomorrowUTC;
-        console.warn(`[twelvedata] quota exhausted — skipping until ${new Date(tomorrowUTC).toISOString()}`);
-      }
-      errors.push(`twelvedata: ${e.message}`);
-    }
-  } else if (timeframe === "1D" && hasTwelve && caller !== "search") {
-    // Silently skipped for watchlist — expected behavior, not an error.
-  } else if (timeframe === "1D" && hasTwelve && Date.now() < twelveSkipUntil) {
-    errors.push(`twelvedata: skipped (quota exhausted until UTC midnight)`);
   }
 
   // 2) Stooq (works only if STOOQ_API_KEY set — captcha-gated since 2025)
