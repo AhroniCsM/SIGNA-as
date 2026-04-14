@@ -56,7 +56,7 @@ window.track=(ev,props)=>{try{window.posthog&&posthog.capture(ev,props||{})}catc
 </head>
 <body>
 <div id="root"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dom-to-image-more@3/dist/dom-to-image-more.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
@@ -366,28 +366,45 @@ function SignalCard({signal:sig,gaugeId="m",size="M",onResize}){
   const[snapState,setSnapState]=useState("idle"); // idle | capturing | done | fallback
 
   const captureCard=useCallback(async()=>{
-    if(!cardRef.current||typeof html2canvas==="undefined")return;
+    if(!cardRef.current||typeof domtoimage==="undefined")return;
     setSnapState("capturing");
+    const dpr=window.devicePixelRatio||1;
+    const scale=Math.max(dpr,3); // at least 3x for crisp output
     try{
-      const canvas=await html2canvas(cardRef.current,{backgroundColor:"#0a0e17",scale:window.devicePixelRatio>=2?3:4,useCORS:true,logging:false,imageTimeout:0,removeContainer:true});
-      // Try clipboard first (works on desktop Chrome/Edge, Safari 15.4+)
-      try{
-        const blob=await new Promise(r=>canvas.toBlob(r,"image/png"));
+      // dom-to-image-more uses SVG foreignObject — preserves native font rendering
+      const blob=await domtoimage.toBlob(cardRef.current,{
+        bgcolor:"#0a0e17",
+        width:cardRef.current.scrollWidth*scale,
+        height:cardRef.current.scrollHeight*scale,
+        style:{transform:`scale(${scale})`,transformOrigin:"top left",width:cardRef.current.scrollWidth+"px",height:cardRef.current.scrollHeight+"px"},
+      });
+      const file=new File([blob],`SIGNA_${sig.symbol}_${sig.timeframe}.png`,{type:"image/png"});
+
+      // 1) Try native share (mobile — opens WhatsApp/Telegram/etc directly)
+      if(navigator.canShare&&navigator.canShare({files:[file]})){
+        await navigator.share({files:[file],title:`SIGNA ${sig.symbol}`,text:`${sig.symbol} · ${sig.verdict||sig.grade} · Score ${sig.score}/100`});
+        setSnapState("done");
+        window.track&&window.track("signal_screenshot",{symbol:sig.symbol,method:"share"});
+      }
+      // 2) Try clipboard (desktop Chrome/Edge/Safari)
+      else if(navigator.clipboard?.write){
         await navigator.clipboard.write([new ClipboardItem({"image/png":blob})]);
         setSnapState("done");
         window.track&&window.track("signal_screenshot",{symbol:sig.symbol,method:"clipboard"});
-      }catch{
-        // Clipboard API blocked (mobile/Firefox) — download instead
+      }
+      // 3) Fallback: download
+      else{
         const link=document.createElement("a");
-        link.download=`SIGNA_${sig.symbol}_${sig.timeframe}.png`;
-        link.href=canvas.toDataURL("image/png");
+        link.download=file.name;
+        link.href=URL.createObjectURL(blob);
         link.click();
+        URL.revokeObjectURL(link.href);
         setSnapState("fallback");
         window.track&&window.track("signal_screenshot",{symbol:sig.symbol,method:"download"});
       }
     }catch(e){console.error("screenshot failed",e);setSnapState("idle");}
-    setTimeout(()=>setSnapState("idle"),2000);
-  },[sig.symbol,sig.timeframe]);
+    setTimeout(()=>setSnapState("idle"),2500);
+  },[sig.symbol,sig.timeframe,sig.verdict,sig.grade,sig.score]);
 
   return<div ref={cardRef} className="signa-card" style={{gridColumn:`span ${sz.span}`,width:"100%",maxWidth:sz.w,background:C.card,border:`1px solid ${gc}22`,borderRadius:16,padding:"0 20px 24px",boxShadow:`0 4px 24px rgba(0,0,0,.4),0 0 40px ${gc}08`,transition:"border-color .4s,box-shadow .4s,max-width .3s",animation:"fadeIn .4s ease both"}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0 6px",borderBottom:`1px solid ${C.cardBorder}`,marginBottom:8}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:14,fontWeight:700,color:C.green,letterSpacing:1}}>SIGNA</span><span style={{fontSize:10,color:C.textMuted}}>SIGNAL</span></div><div style={{display:"flex",alignItems:"center",gap:10,fontSize:11,color:C.textSecondary}}><span style={{fontWeight:600}}>{sig.symbol}</span><span>·</span><span>{sig.timeframe}</span><span>·</span><span style={{color:C.textMuted}}>v{sig.version}</span>{sig.dataDelay&&<Clock size={11} color={C.red}/>}<button onClick={captureCard} title="Copy signal as image" style={{marginLeft:2,background:snapState==="done"?`${C.green}22`:snapState==="fallback"?`${C.cyan}22`:"#0a0e17",border:`1px solid ${snapState==="done"?C.green:snapState==="fallback"?C.cyan:C.cardBorder}`,borderRadius:5,color:snapState==="done"?C.green:snapState==="fallback"?C.cyan:snapState==="capturing"?C.amber:C.textSecondary,fontSize:9,fontWeight:700,padding:"2px 7px",cursor:snapState==="capturing"?"wait":"pointer",letterSpacing:.5,transition:"all .2s"}}>{snapState==="capturing"?"...":snapState==="done"?"Copied!":snapState==="fallback"?"Saved!":"Share"}</button>{onResize&&<button onClick={()=>onResize(nextSize)} title={`Resize (current: ${size}) → ${nextSize}`} style={{background:"#0a0e17",border:`1px solid ${C.cardBorder}`,borderRadius:5,color:C.cyan,fontSize:9,fontWeight:700,padding:"2px 7px",cursor:"pointer",letterSpacing:.5}}>⇱ {size}</button>}</div></div>
