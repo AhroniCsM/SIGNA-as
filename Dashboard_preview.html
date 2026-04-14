@@ -369,7 +369,7 @@ function SignalCard({signal:sig,gaugeId="m",size="M",onResize}){
     if(!cardRef.current||typeof html2canvas==="undefined")return;
     setSnapState("capturing");
     try{
-      const canvas=await html2canvas(cardRef.current,{backgroundColor:"#0a0e17",scale:2,useCORS:true,logging:false});
+      const canvas=await html2canvas(cardRef.current,{backgroundColor:"#0a0e17",scale:window.devicePixelRatio>=2?3:4,useCORS:true,logging:false,imageTimeout:0,removeContainer:true});
       // Try clipboard first (works on desktop Chrome/Edge, Safari 15.4+)
       try{
         const blob=await new Promise(r=>canvas.toBlob(r,"image/png"));
