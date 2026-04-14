@@ -368,16 +368,17 @@ function SignalCard({signal:sig,gaugeId="m",size="M",onResize}){
   const captureCard=useCallback(async()=>{
     if(!cardRef.current||typeof domtoimage==="undefined")return;
     setSnapState("capturing");
-    const dpr=window.devicePixelRatio||1;
-    const scale=Math.max(dpr,3); // at least 3x for crisp output
     try{
-      // dom-to-image-more uses SVG foreignObject — preserves native font rendering
-      const blob=await domtoimage.toBlob(cardRef.current,{
-        bgcolor:"#0a0e17",
-        width:cardRef.current.scrollWidth*scale,
-        height:cardRef.current.scrollHeight*scale,
-        style:{transform:`scale(${scale})`,transformOrigin:"top left",width:cardRef.current.scrollWidth+"px",height:cardRef.current.scrollHeight+"px"},
-      });
+      // Clone the card into an offscreen container at a fixed large width.
+      // The browser renders the clone's text natively at that size — no
+      // bitmap upscaling, so fonts are pixel-perfect in the output PNG.
+      const el=cardRef.current;
+      const clone=el.cloneNode(true);
+      Object.assign(clone.style,{position:"fixed",left:"-9999px",top:"0",width:"900px",maxWidth:"900px",gridColumn:"span 1",zIndex:"-1",opacity:"1",pointerEvents:"none"});
+      document.body.appendChild(clone);
+      await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+      const blob=await domtoimage.toBlob(clone,{bgcolor:"#0a0e17",width:clone.scrollWidth,height:clone.scrollHeight,quality:1});
+      document.body.removeChild(clone);
       const file=new File([blob],`SIGNA_${sig.symbol}_${sig.timeframe}.png`,{type:"image/png"});
 
       // 1) Try native share (mobile — opens WhatsApp/Telegram/etc directly)
